@@ -11,7 +11,11 @@ from bim_evidence_qa.domain import (
     QueryResult,
 )
 from bim_evidence_qa.parsers import SyntheticFixtureParser
-from bim_evidence_qa.query import QueryEngine
+from bim_evidence_qa.query import (
+    DevelopmentNaturalLanguagePlanner,
+    QueryCatalog,
+    QueryEngine,
+)
 
 
 DEFAULT_FIXTURE = Path("tests/fixtures/synthetic_project.json")
@@ -33,6 +37,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         default="storey-level-2",
         help="Storey entity_id used by the storey filter smoke query.",
     )
+    argument_parser.add_argument(
+        "--question",
+        help="Plan and execute one development-only natural-language question.",
+    )
     arguments = argument_parser.parse_args(argv)
 
     dataset = SyntheticFixtureParser().parse(arguments.fixture)
@@ -42,6 +50,15 @@ def main(argv: Sequence[str] | None = None) -> None:
     print("NOT FOR EVALUATION")
     print(f"file: {arguments.fixture}")
     print(f"entities loaded: {len(dataset.entities)}")
+
+    if arguments.question is not None:
+        catalog = QueryCatalog.from_dataset(dataset)
+        plan = DevelopmentNaturalLanguagePlanner().plan(
+            arguments.question, catalog
+        )
+        result = engine.execute(plan, dataset)
+        _print_question_result(arguments.question, plan, result)
+        return
 
     queries = (
         (
@@ -85,6 +102,32 @@ def _print_result(label: str, result: QueryResult) -> None:
     print(f"result value: {value}")
     for entity in result.entities:
         print(f"entity: {entity.name} | GlobalId: {entity.global_id}")
+
+
+def _print_question_result(
+    question: str, plan: QueryPlan, result: QueryResult
+) -> None:
+    print()
+    print("QUESTION")
+    print(question)
+    print()
+    print("QUERY PLAN")
+    print(f"operation: {plan.operation.value}")
+    if plan.kind is not None:
+        print(f"kind: {plan.kind}")
+    if plan.name is not None:
+        print(f"name: {plan.name}")
+    if plan.aggregate_function is not None:
+        print(f"function: {plan.aggregate_function.value}")
+    if plan.aggregate_field is not None:
+        print(f"field: {plan.aggregate_field}")
+    print()
+    print("RESULT")
+    value = result.value if result.value is not None else len(result.entities)
+    print(f"value: {value}")
+    for entity in result.entities:
+        print(f"entity: {entity.name}")
+        print(f"GlobalId: {entity.global_id}")
 
 
 if __name__ == "__main__":

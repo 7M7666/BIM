@@ -1,0 +1,95 @@
+{
+  "fixture_type": "synthetic-development-only",
+  "allowed_for_accuracy_evaluation": false,
+  "warning": "Synthetic test data. Do not use for the final demo or accuracy evaluation.",
+  "entities": [
+    {
+      "entity_id": "storey-level-1",
+      "kind": "storey",
+      "name": "Level 1",
+      "global_id": "SYNTHETIC-STOREY-L1",
+      "container_id": null,
+      "attributes": {}
+    },
+    {
+      "entity_id": "storey-level-2",
+      "kind": "storey",
+      "name": "Level 2",
+      "global_id": "SYNTHETIC-STOREY-L2",
+      "container_id": null,
+      "attributes": {}
+    },
+    {
+      "entity_id": "space-101",
+      "kind": "space",
+      "name": "Room 101",
+      "global_id": "SYNTHETIC-SPACE-101",
+      "container_id": "storey-level-1",
+      "attributes": {"area": 18.0}
+    },
+    {
+      "entity_id": "space-102",
+      "kind": "space",
+      "name": "Room 102",
+      "global_id": "SYNTHETIC-SPACE-102",
+      "container_id": "storey-level-1",
+      "attributes": {"area": 25.0}
+    },
+    {
+      "entity_id": "space-201",
+      "kind": "space",
+      "name": "Room 201",
+      "global_id": "SYNTHETIC-SPACE-201",
+      "container_id": "storey-level-2",
+      "attributes": {"area": 12.0}
+    },
+    {
+      "entity_id": "space-202",
+      "kind": "space",
+      "name": "Room 202",
+      "global_id": "SYNTHETIC-SPACE-202",
+      "container_id": "storey-level-2",
+      "attributes": {"area": 30.0}
+    },
+    {
+      "entity_id": "space-203",
+      "kind": "space",
+      "name": "Room 203",
+      "global_id": "SYNTHETIC-SPACE-203",
+      "container_id": "storey-level-2",
+      "attributes": {"area": 20.0}
+    },
+    {
+      "entity_id": "door-d101",
+      "kind": "door",
+      "name": "Door D101",
+      "global_id": "SYNTHETIC-DOOR-D101",
+      "container_id": "storey-level-1",
+      "attributes": {"width": 0.9}
+    },
+    {
+      "entity_id": "door-d102",
+      "kind": "door",
+      "name": "Door D102",
+      "global_id": "SYNTHETIC-DOOR-D102",
+      "container_id": "storey-level-1",
+      "attributes": {"width": 1.0}
+    },
+    {
+      "entity_id": "door-d201",
+      "kind": "door",
+      "name": "Door D201",
+      "global_id": "SYNTHETIC-DOOR-D201",
+      "container_id": "storey-level-2",
+      "attributes": {"width": 0.9}
+    },
+    {
+      "entity_id": "door-d202",
+      "kind": "door",
+      "name": "Door D202",
+      "global_id": "SYNTHETIC-DOOR-D202",
+      "container_id": "storey-level-2",
+      "attributes": {"width": 1.1}
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "fixture_type": "synthetic-development-only",
-  "allowed_for_accuracy_evaluation": false,
+  "allowed_for_evaluation": false,
   "warning": "Synthetic test data. Do not use for the final demo or accuracy evaluation.",
   "entities": [
     {

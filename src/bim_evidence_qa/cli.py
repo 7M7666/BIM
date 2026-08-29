@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
+from bim_evidence_qa.answering import Answer, AnswerBuilder
 from bim_evidence_qa.domain import (
     AggregateFunction,
     FilterCondition,
@@ -57,7 +58,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             arguments.question, catalog
         )
         result = engine.execute(plan, dataset)
-        _print_question_result(arguments.question, plan, result)
+        answer = AnswerBuilder().build(plan, result)
+        _print_question_result(arguments.question, plan, result, answer)
         return
 
     queries = (
@@ -105,7 +107,7 @@ def _print_result(label: str, result: QueryResult) -> None:
 
 
 def _print_question_result(
-    question: str, plan: QueryPlan, result: QueryResult
+    question: str, plan: QueryPlan, result: QueryResult, answer: Answer
 ) -> None:
     print()
     print("QUESTION")
@@ -125,9 +127,22 @@ def _print_question_result(
     print("RESULT")
     value = result.value if result.value is not None else len(result.entities)
     print(f"value: {value}")
-    for entity in result.entities:
-        print(f"entity: {entity.name}")
-        print(f"GlobalId: {entity.global_id}")
+    print()
+    print("ANSWER")
+    print(answer.text)
+    print()
+    print("EVIDENCE")
+    if not answer.evidence:
+        print("none")
+    for evidence in answer.evidence:
+        print(f"entity: {evidence.name}")
+        print(f"kind: {evidence.kind}")
+        print(f"GlobalId: {evidence.global_id}")
+    if answer.warnings:
+        print()
+        print("WARNINGS")
+        for warning in answer.warnings:
+            print(warning)
 
 
 if __name__ == "__main__":

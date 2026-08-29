@@ -53,6 +53,17 @@ def test_catalog_discovers_fixture_attributes(catalog):
     assert catalog.attributes == {"area", "width"}
 
 
+def test_catalog_attributes_are_kind_aware(catalog):
+    assert catalog.attributes_by_kind == {
+        "storey": frozenset(),
+        "space": frozenset({"area"}),
+        "door": frozenset({"width"}),
+    }
+    assert catalog.supports_attribute("space", "area") is True
+    assert catalog.supports_attribute("door", "width") is True
+    assert catalog.supports_attribute("door", "area") is False
+
+
 def test_catalog_discovers_names_containers_and_operations(catalog):
     assert "Room 202" in catalog.entity_names
     assert catalog.container_ids == {"storey-level-1", "storey-level-2"}
@@ -110,6 +121,14 @@ def test_unknown_attribute_is_rejected(planner, catalog):
         match="Attribute 'color' is not available",
     ):
         planner.plan("What color is Room 101?", catalog)
+
+
+def test_attribute_from_another_entity_kind_is_rejected(planner, catalog):
+    with pytest.raises(
+        UnsupportedQueryError,
+        match="Attribute 'area' is not available for entity kind 'door'",
+    ):
+        planner.plan("What is the average door area?", catalog)
 
 
 def test_planned_query_executes_without_translation(

@@ -130,6 +130,10 @@ class DevelopmentNaturalLanguagePlanner:
             raise UnsupportedQueryError(
                 "No supported aggregate attribute was found in the question."
             )
+        if not catalog.supports_attribute(kind, attribute):
+            raise UnsupportedQueryError(
+                f"Attribute '{attribute}' is not available for entity kind '{kind}'."
+            )
         return QueryPlan(
             operation=QueryOperation.AGGREGATE,
             kind=kind,

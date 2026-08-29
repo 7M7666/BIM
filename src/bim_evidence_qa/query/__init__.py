@@ -4,6 +4,17 @@ from bim_evidence_qa.query.engine import (
     QueryExecutionError,
     UnknownFieldError,
 )
+from bim_evidence_qa.query.llm_planner import (
+    InvalidPlannerOutputError,
+    LLMQueryPlanner,
+    LLMTextProvider,
+)
+from bim_evidence_qa.query.llm_provider import (
+    LLMProviderError,
+    LLMProviderSettings,
+    MissingLLMConfigurationError,
+    OpenAICompatibleChatProvider,
+)
 from bim_evidence_qa.query.planner import (
     DevelopmentNaturalLanguagePlanner,
     QueryPlanner,
@@ -12,6 +23,13 @@ from bim_evidence_qa.query.planner import (
 
 __all__ = [
     "DevelopmentNaturalLanguagePlanner",
+    "InvalidPlannerOutputError",
+    "LLMProviderError",
+    "LLMProviderSettings",
+    "LLMQueryPlanner",
+    "LLMTextProvider",
+    "MissingLLMConfigurationError",
+    "OpenAICompatibleChatProvider",
     "QueryCatalog",
     "QueryEngine",
     "QueryExecutionError",

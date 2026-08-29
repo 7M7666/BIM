@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Mapping
 
 from bim_evidence_qa.domain import BuildingDataset, QueryOperation
 
@@ -7,10 +8,14 @@ from bim_evidence_qa.domain import BuildingDataset, QueryOperation
 class QueryCatalog:
     kinds: frozenset[str]
     attributes: frozenset[str]
+    attributes_by_kind: Mapping[str, frozenset[str]]
     entity_names: frozenset[str]
     container_ids: frozenset[str]
     container_names: frozenset[str]
     operations: frozenset[QueryOperation]
+
+    def supports_attribute(self, kind: str, attribute: str) -> bool:
+        return attribute in self.attributes_by_kind.get(kind, frozenset())
 
     @classmethod
     def from_dataset(cls, dataset: BuildingDataset) -> "QueryCatalog":
@@ -38,6 +43,15 @@ class QueryCatalog:
                 for entity in dataset.entities
                 for attribute in entity.attributes
             ),
+            attributes_by_kind={
+                kind: frozenset(
+                    attribute
+                    for entity in dataset.entities
+                    if entity.kind == kind
+                    for attribute in entity.attributes
+                )
+                for kind in {entity.kind for entity in dataset.entities}
+            },
             entity_names=frozenset(
                 entity.name for entity in dataset.entities if entity.name is not None
             ),

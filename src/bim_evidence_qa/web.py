@@ -1,11 +1,23 @@
+import hashlib
 import os
+import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import streamlit as st
 
 from bim_evidence_qa.application import ApplicationQueryResult, run_question
-from bim_evidence_qa.domain import QueryPlan
-from bim_evidence_qa.parsers import FixtureParseError, SyntheticFixtureParser
+from bim_evidence_qa.domain import BuildingDataset, QueryPlan
+from bim_evidence_qa.parsers import (
+    DrawingDocument,
+    IFCParseError,
+    IfcOpenShellParser,
+    PDFParseError,
+    PyMuPDFParser,
+    FixtureParseError,
+    SyntheticFixtureParser,
+    search_drawing_text,
+)
 from bim_evidence_qa.query import (
     DevelopmentNaturalLanguagePlanner,
     InvalidPlannerOutputError,
@@ -14,6 +26,7 @@ from bim_evidence_qa.query import (
     LLMQueryPlanner,
     MissingLLMConfigurationError,
     OpenAICompatibleChatProvider,
+    QueryExecutionError,
     UnsupportedQueryError,
 )
 
@@ -24,6 +37,15 @@ SYNTHETIC_FIXTURE = (
     / "fixtures"
     / "synthetic_project.json"
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedUploads:
+    drawings: tuple[DrawingDocument, ...]
+    ifc_dataset: BuildingDataset | None
+    has_real_upload: bool
+    ifc_uploaded: bool
+    project_key: tuple[object, ...]
 
 
 def main() -> None:
@@ -37,33 +59,58 @@ def main() -> None:
 
     with project_column:
         st.subheader("PROJECT")
-        _render_uploads()
+        uploads = _render_uploads()
         st.divider()
         use_synthetic = st.checkbox(
             "Development Mode: Use Synthetic Fixture",
             value=False,
+            disabled=uploads.has_real_upload,
         )
         planner_mode = st.selectbox(
             "Query planner",
             ("Development Planner", "LLM Planner"),
         )
 
-        dataset = None
-        if use_synthetic:
+        synthetic_dataset = None
+        if use_synthetic and not uploads.has_real_upload:
+            st.warning("Development Preview\n\nCourse Data Pack Not Loaded")
             st.error("SYNTHETIC DEVELOPMENT DATA\n\nNOT FOR EVALUATION")
             try:
-                dataset = SyntheticFixtureParser().parse(SYNTHETIC_FIXTURE)
+                synthetic_dataset = SyntheticFixtureParser().parse(SYNTHETIC_FIXTURE)
             except FixtureParseError as error:
                 st.error(f"Synthetic fixture could not be loaded: {error}")
             else:
-                st.success(f"Loaded {len(dataset.entities)} synthetic entities.")
-        else:
+                st.success(
+                    f"Loaded {len(synthetic_dataset.entities)} synthetic entities."
+                )
+
+        data_source, dataset = select_project_source(
+            real_dataset=uploads.ifc_dataset,
+            has_real_upload=uploads.has_real_upload,
+            use_synthetic=use_synthetic,
+            synthetic_dataset=synthetic_dataset,
+        )
+        st.markdown(f"**Data Source:** {data_source}")
+        if data_source == "No Project":
             st.info(
-                "No parsed project data. Enable synthetic development mode to ask "
-                "questions while real IFC/PDF parsers are pending."
+                "No project data. Upload a PDF or IFC, or enable synthetic "
+                "development mode."
             )
+        elif data_source == "Uploaded Real Project" and dataset is None:
+            if uploads.ifc_uploaded:
+                st.info("IFC-backed questions are unavailable until parsing succeeds.")
+            else:
+                st.info(
+                    "Drawing search is available. Upload an IFC model for "
+                    "IFC-backed questions."
+                )
 
         planner = _planner(planner_mode)
+
+        active_project_key = (data_source, uploads.project_key)
+        if st.session_state.get("active_project_key") != active_project_key:
+            st.session_state["active_project_key"] = active_project_key
+            st.session_state.pop("last_outcome", None)
 
     with ask_column:
         st.subheader("ASK")
@@ -95,6 +142,9 @@ def main() -> None:
                 st.error("The configured LLM planner could not return a query plan.")
                 with st.expander("Developer error details"):
                     st.code(str(error))
+            except QueryExecutionError as error:
+                st.session_state.pop("last_outcome", None)
+                st.error(str(error))
             else:
                 st.session_state["last_outcome"] = outcome
 
@@ -103,7 +153,7 @@ def main() -> None:
             _render_outcome(outcome)
 
 
-def _render_uploads() -> None:
+def _render_uploads() -> ParsedUploads:
     drawing_files = st.file_uploader(
         "Upload Drawing (.pdf)",
         type=("pdf",),
@@ -116,39 +166,192 @@ def _render_uploads() -> None:
         key="ifc_upload",
     )
 
-    upload_state = {
-        "drawings": _file_metadata(drawing_files, ".pdf"),
-        "ifc": _file_metadata([ifc_file] if ifc_file is not None else [], ".ifc"),
-    }
-    st.session_state["upload_state"] = upload_state
-
-    for file_info in upload_state["drawings"]:
-        st.write(f"📄 {file_info['name']} — {_format_bytes(file_info['size'])}")
-    if upload_state["drawings"]:
-        st.caption("PDF parser pending.")
-
-    for file_info in upload_state["ifc"]:
-        st.write(f"🏢 {file_info['name']} — {_format_bytes(file_info['size'])}")
-    if upload_state["ifc"]:
-        st.caption("IFC parser pending real course data.")
-
-
-def _file_metadata(files: list, expected_suffix: str) -> list[dict[str, object]]:
-    metadata = []
-    for uploaded_file in files:
-        if Path(uploaded_file.name).suffix.casefold() != expected_suffix:
-            st.error(
-                f"Rejected {uploaded_file.name}: expected a {expected_suffix} file."
+    parsed_drawings = []
+    project_key_parts: list[object] = []
+    for uploaded_file in drawing_files:
+        st.write(f"📄 {uploaded_file.name} — {_format_bytes(uploaded_file.size)}")
+        source_bytes = uploaded_file.getvalue()
+        project_key_parts.append(
+            (
+                uploaded_file.name,
+                len(source_bytes),
+                hashlib.sha256(source_bytes).hexdigest(),
             )
-            continue
-        metadata.append(
-            {
-                "name": uploaded_file.name,
-                "size": uploaded_file.size,
-                "extension": expected_suffix,
-            }
         )
-    return metadata
+        try:
+            drawing = _parse_pdf_upload(uploaded_file.name, source_bytes)
+        except PDFParseError as error:
+            st.error(f"PDF parsing failed for {uploaded_file.name}: {error}")
+        else:
+            parsed_drawings.append(drawing)
+            st.success("PDF parsed successfully")
+            st.write(f"Pages: {drawing.page_count}")
+            text_status = "available" if drawing.has_text_layer else "unavailable"
+            st.write(f"Text layer: {text_status}")
+            if not drawing.has_text_layer:
+                st.warning("No extractable text detected.\n\nOCR is not enabled.")
+
+    drawings = tuple(parsed_drawings)
+    if drawings:
+        _render_drawing_tools(drawings)
+
+    ifc_dataset = None
+    if ifc_file is not None:
+        st.write(f"🏢 {ifc_file.name} — {_format_bytes(ifc_file.size)}")
+        source_bytes = ifc_file.getvalue()
+        project_key_parts.append(
+            (
+                ifc_file.name,
+                len(source_bytes),
+                hashlib.sha256(source_bytes).hexdigest(),
+            )
+        )
+        try:
+            ifc_dataset = _parse_ifc_upload(ifc_file.name, source_bytes)
+        except IFCParseError as error:
+            st.error(f"IFC parsing failed for {ifc_file.name}: {error}")
+        else:
+            st.success("IFC parsed successfully")
+            counts = _entity_counts(ifc_dataset)
+            st.write(f"Storeys: {counts['storey']}")
+            st.write(f"Spaces: {counts['space']}")
+            st.write(f"Doors: {counts['door']}")
+            st.write(f"Windows: {counts['window']}")
+            st.write(f"Walls: {counts['wall']}")
+            for warning in _ifc_warnings(ifc_dataset):
+                st.warning(warning)
+
+    st.session_state["upload_state"] = {
+        "drawings": [
+            {"name": file.name, "size": file.size, "extension": ".pdf"}
+            for file in drawing_files
+        ],
+        "ifc": (
+            [
+                {
+                    "name": ifc_file.name,
+                    "size": ifc_file.size,
+                    "extension": ".ifc",
+                }
+            ]
+            if ifc_file is not None
+            else []
+        ),
+    }
+
+    return ParsedUploads(
+        drawings=drawings,
+        ifc_dataset=ifc_dataset,
+        has_real_upload=bool(drawing_files or ifc_file is not None),
+        ifc_uploaded=ifc_file is not None,
+        project_key=tuple(project_key_parts),
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _parse_pdf_upload(file_name: str, source_bytes: bytes) -> DrawingDocument:
+    return PyMuPDFParser().parse_bytes(source_bytes, file_name=file_name)
+
+
+@st.cache_data(show_spinner=False)
+def _parse_ifc_upload(file_name: str, source_bytes: bytes) -> BuildingDataset:
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as temporary:
+            temporary.write(source_bytes)
+            temporary_path = Path(temporary.name)
+        return IfcOpenShellParser().parse(temporary_path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _render_drawing_tools(drawings: tuple[DrawingDocument, ...]) -> None:
+    st.markdown("### Drawing Preview")
+    drawing_by_name = {drawing.file_name: drawing for drawing in drawings}
+    selected_name = st.selectbox("Drawing", tuple(drawing_by_name))
+    selected_drawing = drawing_by_name[selected_name]
+    page_number = st.selectbox(
+        "Page",
+        tuple(range(1, selected_drawing.page_count + 1)),
+    )
+    try:
+        preview = PyMuPDFParser().render_page(selected_drawing, page_number)
+    except PDFParseError as error:
+        st.error(f"Drawing preview failed: {error}")
+    else:
+        st.image(preview, caption=f"{selected_name} — page {page_number}")
+
+    query_term = st.text_input(
+        "Drawing text search",
+        placeholder="Room 101",
+    )
+    if query_term.strip():
+        matches = [
+            (drawing.file_name, page.page_number)
+            for drawing in drawings
+            for page in search_drawing_text(drawing, query_term)
+        ]
+        if matches:
+            st.write("Matching drawing pages")
+            for file_name, matching_page in matches:
+                st.write(f"{file_name} — page {matching_page}")
+        else:
+            st.info("No matching drawing pages.")
+
+
+def _entity_counts(dataset: BuildingDataset) -> dict[str, int]:
+    return {
+        kind: sum(entity.kind == kind for entity in dataset.entities)
+        for kind in ("storey", "space", "door", "window", "wall")
+    }
+
+
+def _ifc_warnings(dataset: BuildingDataset) -> tuple[str, ...]:
+    warnings = []
+    labels = {
+        "storey": ("storey", "storeys"),
+        "space": ("space", "spaces"),
+        "door": ("door", "doors"),
+        "window": ("window", "windows"),
+        "wall": ("wall", "walls"),
+    }
+    for kind, (singular, plural) in labels.items():
+        missing_names = sum(
+            entity.kind == kind and entity.name is None
+            for entity in dataset.entities
+        )
+        if missing_names:
+            label = singular if missing_names == 1 else plural
+            verb = "has" if missing_names == 1 else "have"
+            warnings.append(f"{missing_names} {label} {verb} no name")
+        if kind == "storey":
+            continue
+        missing_containers = sum(
+            entity.kind == kind and entity.container_id is None
+            for entity in dataset.entities
+        )
+        if missing_containers:
+            label = singular if missing_containers == 1 else plural
+            verb = "has" if missing_containers == 1 else "have"
+            warnings.append(
+                f"{missing_containers} {label} {verb} no spatial container"
+            )
+    return tuple(warnings)
+
+
+def select_project_source(
+    *,
+    real_dataset: BuildingDataset | None,
+    has_real_upload: bool,
+    use_synthetic: bool,
+    synthetic_dataset: BuildingDataset | None,
+) -> tuple[str, BuildingDataset | None]:
+    if has_real_upload:
+        return "Uploaded Real Project", real_dataset
+    if use_synthetic:
+        return "Synthetic Development Project", synthetic_dataset
+    return "No Project", None
 
 
 def _planner(mode: str):

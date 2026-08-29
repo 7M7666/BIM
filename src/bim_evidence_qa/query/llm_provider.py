@@ -55,6 +55,8 @@ class OpenAICompatibleChatProvider:
             {
                 "model": self._settings.model,
                 "temperature": 0,
+                "response_format": {"type": "json_object"},
+                "thinking": {"type": "disabled"},
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -79,5 +81,15 @@ class OpenAICompatibleChatProvider:
                     "LLM provider response content must be a string."
                 )
             return content
-        except (HTTPError, URLError, JSONDecodeError, KeyError, IndexError) as error:
+        except (
+            HTTPError,
+            URLError,
+            JSONDecodeError,
+            IndexError,
+            KeyError,
+            TimeoutError,
+            TypeError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as error:
             raise LLMProviderError(f"LLM provider request failed: {error}") from error

@@ -19,7 +19,12 @@ from bim_evidence_qa.query import (
 )
 
 
-DEFAULT_FIXTURE = Path("tests/fixtures/synthetic_project.json")
+DEFAULT_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "fixtures"
+    / "synthetic_project.json"
+)
 
 
 def main(argv: Sequence[str] | None = None) -> None:

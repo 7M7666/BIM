@@ -2,13 +2,18 @@ import pytest
 
 from bim_evidence_qa.domain import (
     AggregateFunction,
+    BuildingDataset,
     BuildingEntity,
     FilterCondition,
     FilterOperator,
     QueryOperation,
     QueryPlan,
 )
-from bim_evidence_qa.query import QueryEngine, UnknownFieldError
+from bim_evidence_qa.query import (
+    IncompleteDataError,
+    QueryEngine,
+    UnknownFieldError,
+)
 
 
 @pytest.fixture
@@ -148,3 +153,30 @@ def test_global_id_is_preserved_and_not_generated(engine, synthetic_dataset):
 
     assert result.entities[0].global_id == "SYNTHETIC-SPACE-202"
     assert BuildingEntity(entity_id="without-global-id", kind="space").global_id is None
+
+
+def test_partial_aggregate_attribute_coverage_is_explicit(engine):
+    dataset = BuildingDataset(
+        entities=(
+            BuildingEntity("space-1", "space", attributes={"area": 10.0}),
+            BuildingEntity("space-2", "space", attributes={"area": 20.0}),
+            BuildingEntity("space-3", "space", attributes={}),
+        )
+    )
+    plan = QueryPlan(
+        operation=QueryOperation.AGGREGATE,
+        kind="space",
+        aggregate_function=AggregateFunction.MAX,
+        aggregate_field="area",
+    )
+
+    with pytest.raises(IncompleteDataError) as captured:
+        engine.execute(plan, dataset)
+
+    error = captured.value
+    assert error.field == "area"
+    assert error.target_kind == "space"
+    assert error.available_count == 2
+    assert error.total_count == 3
+    assert error.missing_entity_ids == ("space-3",)
+    assert "cannot be answered reliably" in str(error)

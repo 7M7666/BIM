@@ -1,5 +1,6 @@
 from bim_evidence_qa.query.catalog import QueryCatalog
 from bim_evidence_qa.query.engine import (
+    IncompleteDataError,
     QueryEngine,
     QueryExecutionError,
     UnknownFieldError,
@@ -23,6 +24,7 @@ from bim_evidence_qa.query.planner import (
 
 __all__ = [
     "DevelopmentNaturalLanguagePlanner",
+    "IncompleteDataError",
     "InvalidPlannerOutputError",
     "LLMProviderError",
     "LLMProviderSettings",

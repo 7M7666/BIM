@@ -21,6 +21,31 @@ class UnknownFieldError(QueryExecutionError):
     """Raised when a query references a field missing from an entity."""
 
 
+class IncompleteDataError(UnknownFieldError):
+    """Raised when an aggregate field is missing from some candidate entities."""
+
+    def __init__(
+        self,
+        *,
+        field: str,
+        target_kind: str,
+        available_count: int,
+        total_count: int,
+        missing_entity_ids: tuple[str, ...],
+    ) -> None:
+        self.field = field
+        self.target_kind = target_kind
+        self.available_count = available_count
+        self.total_count = total_count
+        self.missing_entity_ids = missing_entity_ids
+        missing = ", ".join(missing_entity_ids)
+        super().__init__(
+            f"Field '{field}' for target kind '{target_kind}' is available for "
+            f"{available_count} of {total_count} entities. Missing entity IDs: "
+            f"{missing}. The query cannot be answered reliably."
+        )
+
+
 class QueryEngine:
     _ENTITY_FIELDS = {
         "entity_id",
@@ -98,9 +123,27 @@ class QueryEngine:
         assert plan.aggregate_field is not None
         assert plan.aggregate_function is not None
 
-        values: list[int | float] = []
+        raw_values: list[ScalarValue] = []
+        missing_entity_ids = []
         for entity in entities:
-            value = self._field_value(entity, plan.aggregate_field)
+            try:
+                value = self._field_value(entity, plan.aggregate_field)
+            except UnknownFieldError:
+                missing_entity_ids.append(entity.entity_id)
+                continue
+            raw_values.append(value)
+
+        if missing_entity_ids:
+            raise IncompleteDataError(
+                field=plan.aggregate_field,
+                target_kind=plan.kind or "entity",
+                available_count=len(raw_values),
+                total_count=len(entities),
+                missing_entity_ids=tuple(missing_entity_ids),
+            )
+
+        values: list[int | float] = []
+        for entity, value in zip(entities, raw_values, strict=True):
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise QueryExecutionError(
                     f"Field '{plan.aggregate_field}' on entity "

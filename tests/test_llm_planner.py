@@ -10,6 +10,7 @@ from bim_evidence_qa.query import (
     LLMQueryPlanner,
     MissingLLMConfigurationError,
     QueryCatalog,
+    UnsupportedQueryError,
 )
 
 
@@ -52,6 +53,14 @@ def test_llm_planner_returns_catalog_validated_plan(catalog):
     assert plan.aggregate_field == "area"
     assert "Do not answer the question" in provider.system_prompt
     assert '"attributes_by_kind"' in provider.user_prompt
+    assert '"aggregate_functions"' in provider.user_prompt
+    assert '"valid_query_plan_examples"' in provider.user_prompt
+    assert '"unsupported_example"' in provider.user_prompt
+    assert "English or Chinese" in provider.system_prompt
+    assert "Never substitute the nearest available concept" in provider.system_prompt
+    assert "absent elevator is not a door" in provider.system_prompt
+    assert "absent stairs are not a storey" in provider.system_prompt
+    assert "absent column is not a wall" in provider.system_prompt
 
 
 def test_validated_llm_plan_enters_grounded_application_flow(synthetic_dataset):
@@ -132,6 +141,39 @@ def test_llm_planner_rejects_unsupported_operation(catalog):
         match="unsupported operation 'relationship'",
     ):
         LLMQueryPlanner(provider).plan("Which rooms connect?", catalog)
+
+
+def test_llm_planner_accepts_explicit_unsupported_response(catalog):
+    provider = FakeProvider(
+        json.dumps({"unsupported": "color is unavailable in the catalog"})
+    )
+
+    with pytest.raises(UnsupportedQueryError, match="LLM planner rejected question"):
+        LLMQueryPlanner(provider).plan("What color is Room 101?", catalog)
+
+
+def test_query_catalog_prompt_changes_with_dataset_content(
+    synthetic_dataset,
+    development_ifc_dataset,
+):
+    synthetic_payload = QueryCatalog.from_dataset(
+        synthetic_dataset
+    ).as_prompt_payload()
+    ifc_payload = QueryCatalog.from_dataset(
+        development_ifc_dataset
+    ).as_prompt_payload()
+
+    assert synthetic_payload["kinds"] == ["door", "space", "storey"]
+    assert ifc_payload["kinds"] == [
+        "door",
+        "space",
+        "storey",
+        "wall",
+        "window",
+    ]
+    assert "Room 202" in synthetic_payload["entity_names"]
+    assert "Room 202" not in ifc_payload["entity_names"]
+    assert ifc_payload["aggregate_functions"] == ["average", "max", "min"]
 
 
 def test_llm_settings_require_environment_configuration():

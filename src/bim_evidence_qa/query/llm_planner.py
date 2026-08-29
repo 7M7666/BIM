@@ -11,6 +11,7 @@ from bim_evidence_qa.domain import (
     ScalarValue,
 )
 from bim_evidence_qa.query.catalog import QueryCatalog
+from bim_evidence_qa.query.planner import UnsupportedQueryError
 
 
 class InvalidPlannerOutputError(ValueError):
@@ -54,9 +55,17 @@ class LLMQueryPlanner:
     @staticmethod
     def _system_prompt() -> str:
         return (
-            "Convert the question into one JSON QueryPlan object. "
+            "Convert the English or Chinese question into one JSON QueryPlan object. "
             "Do not answer the question, invent building facts, or return GlobalIds. "
             "Use only kinds, attributes, names, containers, and operations in the catalog. "
+            "Every entity type, attribute, entity name, and container explicitly requested "
+            "must have a direct semantic match in the catalog. Concepts absent from the "
+            "catalog must be unsupported. Never substitute the nearest available concept: "
+            "an absent elevator is not a door, absent stairs are not a storey, and an "
+            "absent column is not a wall. An absent roof or furniture type is also "
+            "unsupported. "
+            "If the catalog cannot support the question, return exactly one JSON object "
+            "with a non-empty unsupported string and no other keys. "
             "Allowed keys are operation, kind, name, filters, aggregate_function, "
             "and aggregate_field. Each filter has field, operator, and value. "
             "Allowed filter operators are eq, ne, gt, gte, lt, and lte. "
@@ -65,21 +74,36 @@ class LLMQueryPlanner:
 
     @staticmethod
     def _user_prompt(question: str, catalog: QueryCatalog) -> str:
-        catalog_payload = {
-            "kinds": sorted(catalog.kinds),
-            "attributes_by_kind": {
-                kind: sorted(attributes)
-                for kind, attributes in sorted(catalog.attributes_by_kind.items())
-            },
-            "entity_names": sorted(catalog.entity_names),
-            "container_ids": sorted(catalog.container_ids),
-            "container_names": sorted(catalog.container_names),
-            "operations": sorted(operation.value for operation in catalog.operations),
-        }
         return json.dumps(
-            {"question": question, "catalog": catalog_payload},
+            {
+                "question": question,
+                "catalog": catalog.as_prompt_payload(),
+                "valid_query_plan_examples": LLMQueryPlanner._examples(catalog),
+                "unsupported_example": {
+                    "unsupported": "requested fact is unavailable in the catalog"
+                },
+            },
             ensure_ascii=False,
         )
+
+    @staticmethod
+    def _examples(catalog: QueryCatalog) -> list[dict[str, object]]:
+        examples: list[dict[str, object]] = []
+        if catalog.kinds:
+            examples.append(
+                {
+                    "operation": "count",
+                    "kind": sorted(catalog.kinds)[0],
+                }
+            )
+        if catalog.entity_names:
+            examples.append(
+                {
+                    "operation": "find",
+                    "name": sorted(catalog.entity_names)[0],
+                }
+            )
+        return examples
 
     def _parse_response(
         self, response: str, catalog: QueryCatalog
@@ -94,6 +118,10 @@ class LLMQueryPlanner:
             raise InvalidPlannerOutputError(
                 "Planner output must be one JSON object."
             )
+
+        if set(payload) == {"unsupported"}:
+            reason = self._required_string(payload["unsupported"], "unsupported")
+            raise UnsupportedQueryError(f"LLM planner rejected question: {reason}")
 
         unknown_keys = payload.keys() - self._ALLOWED_KEYS
         if unknown_keys:

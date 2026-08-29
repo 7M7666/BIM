@@ -1,7 +1,11 @@
 from dataclasses import dataclass
 from typing import Mapping
 
-from bim_evidence_qa.domain import BuildingDataset, QueryOperation
+from bim_evidence_qa.domain import (
+    AggregateFunction,
+    BuildingDataset,
+    QueryOperation,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +20,22 @@ class QueryCatalog:
 
     def supports_attribute(self, kind: str, attribute: str) -> bool:
         return attribute in self.attributes_by_kind.get(kind, frozenset())
+
+    def as_prompt_payload(self) -> dict[str, object]:
+        return {
+            "kinds": sorted(self.kinds),
+            "attributes_by_kind": {
+                kind: sorted(attributes)
+                for kind, attributes in sorted(self.attributes_by_kind.items())
+            },
+            "entity_names": sorted(self.entity_names),
+            "container_ids": sorted(self.container_ids),
+            "container_names": sorted(self.container_names),
+            "operations": sorted(operation.value for operation in self.operations),
+            "aggregate_functions": sorted(
+                function.value for function in AggregateFunction
+            ),
+        }
 
     @classmethod
     def from_dataset(cls, dataset: BuildingDataset) -> "QueryCatalog":

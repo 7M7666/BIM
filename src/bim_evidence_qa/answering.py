@@ -6,6 +6,7 @@ from bim_evidence_qa.domain import (
     QueryPlan,
     QueryResult,
     ScalarValue,
+    PropertyValue,
 )
 
 
@@ -15,6 +16,7 @@ class EntityEvidence:
     kind: str
     name: str | None
     global_id: str | None
+    properties: tuple[PropertyValue, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +39,7 @@ class AnswerBuilder:
                 kind=entity.kind,
                 name=entity.name,
                 global_id=entity.global_id,
+                properties=result.properties if len(result.entities) == 1 else (),
             )
             for entity in result.entities
         )
@@ -47,6 +50,8 @@ class AnswerBuilder:
         )
 
         status, text = self._answer_text(plan, result)
+        if result.diagnostics:
+            text = " ".join((text, *result.diagnostics))
         return Answer(
             status=status,
             text=text,
@@ -56,6 +61,15 @@ class AnswerBuilder:
         )
 
     def _answer_text(self, plan: QueryPlan, result: QueryResult) -> tuple[str, str]:
+        if plan.requested_property is not None:
+            entity = result.entities[0]
+            if plan.requested_property == "properties":
+                return "ok", f"Showing {len(result.properties)} scalar properties for {entity.name or entity.entity_id}."
+            prop = result.properties[0]
+            return "ok", (
+                f"{entity.name or entity.entity_id}: {prop.path} = {prop.value} "
+                f"{prop.unit or '(unit unavailable)'}."
+            )
         if plan.operation is QueryOperation.COUNT:
             kind = plan.kind or "entity"
             return "ok", f"There are {result.value} {kind}s."

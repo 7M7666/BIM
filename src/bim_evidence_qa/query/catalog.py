@@ -1,11 +1,25 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping
 
 from bim_evidence_qa.domain import (
     AggregateFunction,
     BuildingDataset,
+    BuildingEntity,
     QueryOperation,
+    FilterCondition,
+    FilterOperator,
 )
+
+
+REFERENCE_LEVEL_FIELD = "Constraints.Reference Level"
+
+
+class LevelResolutionError(ValueError):
+    """A requested level is absent or ambiguous in the current dataset."""
+
+
+def normalize_level_name(value: str) -> str:
+    return " ".join(value.casefold().split())
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +31,32 @@ class QueryCatalog:
     container_ids: frozenset[str]
     container_names: frozenset[str]
     operations: frozenset[QueryOperation]
+    storeys_by_id: Mapping[str, str | None] = field(default_factory=dict)
+    reference_levels_by_kind: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    entities_by_id: Mapping[str, BuildingEntity] = field(default_factory=dict)
+
+    def resolve_level(self, name: str, *, reference: bool = False,
+                      kind: str | None = None) -> FilterCondition:
+        normalized = normalize_level_name(name)
+        if reference:
+            candidates = [
+                value for value in sorted(self.reference_levels_by_kind.get(kind, ()))
+                if normalize_level_name(value) == normalized
+            ]
+            field_name = REFERENCE_LEVEL_FIELD
+            label = "Reference Level property"
+        else:
+            candidates = [
+                entity_id for entity_id, value in self.storeys_by_id.items()
+                if value is not None and normalize_level_name(value) == normalized
+            ]
+            field_name = "container_id"
+            label = "IfcBuildingStorey"
+        if not candidates:
+            raise LevelResolutionError(f"{label} '{name}' is unavailable (not found).")
+        if len(candidates) != 1:
+            raise LevelResolutionError(f"Ambiguous {label} '{name}': multiple matches.")
+        return FilterCondition(field_name, FilterOperator.EQ, candidates[0])
 
     def supports_attribute(self, kind: str, attribute: str) -> bool:
         return attribute in self.attributes_by_kind.get(kind, frozenset())
@@ -31,6 +71,10 @@ class QueryCatalog:
             "entity_names": sorted(self.entity_names),
             "container_ids": sorted(self.container_ids),
             "container_names": sorted(self.container_names),
+            "storeys_by_id": dict(self.storeys_by_id),
+            "reference_levels_by_kind": {
+                kind: sorted(values) for kind, values in sorted(self.reference_levels_by_kind.items())
+            },
             "operations": sorted(operation.value for operation in self.operations),
             "aggregate_functions": sorted(
                 function.value for function in AggregateFunction
@@ -78,4 +122,14 @@ class QueryCatalog:
             container_ids=frozenset(container_ids),
             container_names=frozenset(container_names),
             operations=frozenset(QueryOperation),
+            entities_by_id=entities_by_id,
+            storeys_by_id={storey.entity_id: storey.name for storey in storeys},
+            reference_levels_by_kind={
+                kind: frozenset(
+                    value for entity in dataset.entities if entity.kind == kind
+                    if isinstance(value := entity.attributes.get(REFERENCE_LEVEL_FIELD), str)
+                    and value.strip()
+                )
+                for kind in {entity.kind for entity in dataset.entities}
+            },
         )

@@ -1,4 +1,8 @@
 from statistics import fmean
+from dataclasses import replace
+
+from bim_evidence_qa.query.catalog import REFERENCE_LEVEL_FIELD
+from bim_evidence_qa.query.properties import DISPLAY_LIMIT, resolve_property
 
 from bim_evidence_qa.domain import (
     AggregateFunction,
@@ -10,6 +14,8 @@ from bim_evidence_qa.domain import (
     QueryPlan,
     QueryResult,
     ScalarValue,
+    ResolutionError,
+    PropertySource,
 )
 
 
@@ -57,19 +63,60 @@ class QueryEngine:
 
     def execute(self, plan: QueryPlan, dataset: BuildingDataset) -> QueryResult:
         entities = self._select(plan, dataset)
+        diagnostics = self._level_diagnostics(plan, dataset)
+
+        if plan.requested_property is not None:
+            if len(entities) != 1:
+                code = "entity_not_found" if not entities else "ambiguous"
+                raise ResolutionError(code, "Property lookup requires exactly one matching object.",
+                                      tuple(e.entity_id for e in entities))
+            entity = entities[0]
+            if plan.requested_property == "properties":
+                properties = tuple(sorted(entity.properties, key=lambda p: (
+                    p.source is not PropertySource.QUANTITY, p.path, p.source_id or 0
+                )))
+                if not properties:
+                    raise ResolutionError("missing", "No scalar properties with IFC provenance are available.")
+                if len(properties) > DISPLAY_LIMIT:
+                    diagnostics += (f"Showing {DISPLAY_LIMIT} of {len(properties)} scalar properties; quantities first.",)
+                properties = properties[:DISPLAY_LIMIT]
+                value = None
+            else:
+                properties = (resolve_property(entity, plan.requested_property),)
+                value = properties[0].value
+            return QueryResult(plan.operation, entities, value, diagnostics, properties)
 
         if plan.operation in {QueryOperation.FIND, QueryOperation.FILTER}:
-            return QueryResult(operation=plan.operation, entities=entities)
+            return QueryResult(operation=plan.operation, entities=entities, diagnostics=diagnostics)
         if plan.operation is QueryOperation.COUNT:
             return QueryResult(
                 operation=plan.operation,
                 entities=entities,
                 value=len(entities),
+                diagnostics=diagnostics,
             )
         if plan.operation is QueryOperation.AGGREGATE:
-            return self._aggregate(plan, entities)
+            return replace(self._aggregate(plan, entities), diagnostics=diagnostics)
 
         raise QueryExecutionError(f"Unsupported query operation: {plan.operation}")
+
+    @staticmethod
+    def _level_diagnostics(plan: QueryPlan, dataset: BuildingDataset) -> tuple[str, ...]:
+        diagnostics = []
+        for condition in plan.filters:
+            if condition.field == REFERENCE_LEVEL_FIELD:
+                diagnostics.append(
+                    f"Property-based level: {REFERENCE_LEVEL_FIELD} {condition.operator.value} "
+                    f"'{condition.value}'. This is not IfcBuildingStorey containment."
+                )
+            elif condition.field == "container_id":
+                storey = next((e for e in dataset.entities
+                               if e.kind == "storey" and e.entity_id == condition.value), None)
+                if storey is not None:
+                    diagnostics.append(
+                        f"Spatial containment: IfcBuildingStorey {condition.operator.value} '{storey.name}'."
+                    )
+        return tuple(diagnostics)
 
     def _select(
         self, plan: QueryPlan, dataset: BuildingDataset

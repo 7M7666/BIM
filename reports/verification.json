@@ -1,0 +1,100 @@
+{
+  "baseline_sha256": "9420fdc68b971c5bd2c601f7075d48acf855e4015dc649b30498c822dd301590",
+  "baseline_unchanged": true,
+  "all_48_bim_results_identical": true,
+  "ground_truth_unchanged": true,
+  "browser_snapshot_assertions": {
+    "rac-count.txt": [
+      "There are 16 doors."
+    ],
+    "rac-level2.txt": [
+      "There are 10 doors.",
+      "Spatial containment: IfcBuildingStorey"
+    ],
+    "rac-width-ifc.txt": [
+      "800.0 mm",
+      "1PDnLIM013wvkZO9Lb4$s7",
+      "Qto_DoorBaseQuantities",
+      "Width"
+    ],
+    "rac-ambiguous.txt": [
+      "ambiguous",
+      "Dimensions.Area",
+      "Qto_DoorBaseQuantities.Area"
+    ],
+    "rst-count.txt": [
+      "There are 370 beams."
+    ],
+    "rst-reference-level.txt": [
+      "There are 84 beams.",
+      "This is not IfcBuildingStorey containment.",
+      "page 2"
+    ],
+    "rst-beam-ifc.txt": [
+      "4242.6 mm",
+      "3zL2DJMkrEuekgiISjJ_Rg",
+      "Qto_BeamBaseQuantities"
+    ],
+    "rst-beam-drawing-final.txt": [
+      "No reliable drawing evidence found.",
+      "手动预览，与当前答案未建立关联。"
+    ],
+    "rst-footing.txt": [
+      "1178029",
+      "page 6",
+      "S204"
+    ]
+  },
+  "preview_decoding": [
+    {
+      "complete": true,
+      "inline": true,
+      "width": 3572
+    }
+  ],
+  "tests": {
+    "original": 264,
+    "new": 89,
+    "total_passed": 353,
+    "failed": 0,
+    "skipped": 0,
+    "xfailed": 0
+  },
+  "git_diff_check": "exit 0, no whitespace errors; only CRLF conversion notices",
+  "course_metrics": {
+    "planning": {
+      "correct": 48,
+      "applicable_total": 48,
+      "accuracy": 1.0
+    },
+    "answer": {
+      "correct": 48,
+      "applicable_total": 48,
+      "accuracy": 1.0
+    },
+    "evidence": {
+      "correct": 39,
+      "applicable_total": 39,
+      "accuracy": 1.0
+    },
+    "status": {
+      "correct": 48,
+      "applicable_total": 48,
+      "accuracy": 1.0
+    }
+  },
+  "drawing_top1": {
+    "correct": 10,
+    "total": 10,
+    "accuracy": 1.0
+  },
+  "drawing_coverage": {
+    "retrieved": 10,
+    "total": 10,
+    "rate": 1.0
+  },
+  "drawing_no_match_controls": {
+    "correct_abstentions": 2,
+    "total": 2
+  }
+}

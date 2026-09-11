@@ -56,6 +56,10 @@ class EvaluationRunner:
     def __init__(self, planner: QueryPlanner) -> None:
         self._planner = planner
 
+    def run_course(self, datasets, cases):
+        from bim_evidence_qa.evaluation.course import evaluate_course
+        return evaluate_course(self._planner, datasets, cases)
+
     def run(
         self,
         dataset: BuildingDataset,

@@ -1,0 +1,14 @@
+[
+  {"case_id":"course-01","expected_document":"rac_basic_sample_project.pdf","expected_page":3,"basis":"A102 Plans: visible door marks 103,104,105,106A/B,201A/B etc. Related sheet for the set, not proof of total count."},
+  {"case_id":"course-02","expected_document":"rac_basic_sample_project.pdf","expected_page":3,"basis":"A102 Plans: repeated window type mark 46. Type-level association only, not unique instance localization."},
+  {"case_id":"course-22","expected_document":"rac_basic_sample_project.pdf","expected_page":3,"basis":"A102 left view titled Level 1, with doors 103,104,105. Visually checked rendered page."},
+  {"case_id":"course-23","expected_document":"rac_basic_sample_project.pdf","expected_page":3,"basis":"A102 left Living room view includes door marks 106A and 106B; IFC containment is Level 1 Living Rm."},
+  {"case_id":"course-24","expected_document":"rac_basic_sample_project.pdf","expected_page":3,"basis":"A102 right view titled Level 2 contains its door marks. Visually checked rendered page."},
+  {"case_id":"course-25","expected_document":"rst_basic_sample_project.pdf","expected_page":2,"basis":"S101 Framing Plans includes Level 2 view. Related level plan only; no assertion of IfcBuildingStorey containment or all 84 individual beam identities."},
+  {"case_id":"course-33","expected_document":"rst_basic_sample_project.pdf","expected_page":6,"basis":"S204 Footing Detail explicitly labels Continuous footing (1178029). Rendered page verified; matching raw IFC exported name suffix."},
+  {"case_id":"course-34","expected_document":"rst_basic_sample_project.pdf","expected_page":5,"basis":"S203 Central Pile Section explicitly labels Pile cap (1175183). Raw IFC name suffix matches. This is the exported IfcPile object, not inferred geometry."},
+  {"case_id":"course-35","expected_document":"rac_basic_sample_project.pdf","expected_page":3,"basis":"Raw IFC door 422466 Identity Data.Mark=103. A102 left floor plan has door tag 103; A103 elsewhere is a sheet number, not this mark."},
+  {"case_id":"course-37","expected_document":"rac_basic_sample_project.pdf","expected_page":3,"basis":"Raw IFC window 457479 Type Mark=46. A102 repeats 46; instance Mark=18 is absent. Candidate is a shared-type sheet, not an exact window instance."},
+  {"case_id":"course-28","expected_document":null,"expected_page":null,"basis":"No exact 1046268 or full object name in PDF text; 200UB25.4 occurs on multiple sheets and cannot identify this beam. Separate no-match control, excluded from positive top-1 denominator."},
+  {"case_id":"course-30","expected_document":null,"expected_page":null,"basis":"No exact 1046264 or full object name in PDF text. Column schedule shares type 200UB25.4 across several columns; no reliable instance page. Separate no-match control."}
+]

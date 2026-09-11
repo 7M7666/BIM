@@ -1,4 +1,5 @@
 import json
+import re
 from json import JSONDecodeError
 from typing import Protocol
 
@@ -10,8 +11,13 @@ from bim_evidence_qa.domain import (
     QueryPlan,
     ScalarValue,
 )
-from bim_evidence_qa.query.catalog import QueryCatalog
-from bim_evidence_qa.query.planner import UnsupportedQueryError
+from bim_evidence_qa.query.catalog import LevelResolutionError, QueryCatalog, REFERENCE_LEVEL_FIELD
+from bim_evidence_qa.query.planner import (
+    DevelopmentNaturalLanguagePlanner, UnsupportedQueryError,
+    resolve_question_level, split_level_scope,
+)
+from bim_evidence_qa.query.terminology import normalize_question
+from bim_evidence_qa.query.properties import SEMANTIC_FIELDS, requested_property, resolve_object
 
 
 class InvalidPlannerOutputError(ValueError):
@@ -33,6 +39,8 @@ class LLMQueryPlanner:
         "filters",
         "aggregate_function",
         "aggregate_field",
+        "requested_property",
+        "object_ref",
     }
     _CORE_FIELDS = {
         "entity_id",
@@ -46,11 +54,42 @@ class LLMQueryPlanner:
         self._provider = provider
 
     def plan(self, question: str, catalog: QueryCatalog) -> QueryPlan:
+        normalized = normalize_question(question, (
+            e.name for e in catalog.entities_by_id.values() if e.name and e.kind != "storey"
+        ))
+        subject, level, reference = split_level_scope(normalized)
         response = self._provider.complete(
             self._system_prompt(),
             self._user_prompt(question, catalog),
         )
-        return self._parse_response(response, catalog)
+        plan = self._parse_response(response, catalog)
+        requested = requested_property(subject, (p for p in catalog.attributes if "." in p))
+        aggregate_intent = DevelopmentNaturalLanguagePlanner._contains_any(
+            subject.casefold(), (*DevelopmentNaturalLanguagePlanner._MAX_MARKERS,
+                                 *DevelopmentNaturalLanguagePlanner._MIN_MARKERS,
+                                 *DevelopmentNaturalLanguagePlanner._AVERAGE_MARKERS)
+        )
+        if plan.requested_property is not None:
+            if requested != plan.requested_property:
+                raise InvalidPlannerOutputError("Planner changed or invented the requested property.")
+            local = DevelopmentNaturalLanguagePlanner()._property_plan(subject, requested, catalog)
+            if plan.kind != local.kind or plan.filters[:1] != local.filters:
+                raise InvalidPlannerOutputError("Planner changed the requested object.")
+            if level is None and plan.filters != local.filters:
+                raise InvalidPlannerOutputError("Planner added unrequested property filters.")
+        elif requested and (not aggregate_intent or plan.operation is not QueryOperation.AGGREGATE):
+            raise InvalidPlannerOutputError("Planner omitted the requested property.")
+        if level is not None:
+            subject_kind = DevelopmentNaturalLanguagePlanner()._resolve_kind(
+                re.findall(r"[a-z0-9_-]+", subject.casefold()), catalog
+            )
+            if subject_kind is not None and plan.kind != subject_kind:
+                raise InvalidPlannerOutputError("Planner changed the scoped query's entity kind.")
+            expected = resolve_question_level(catalog, level, reference, plan.kind)
+            level_filters = tuple(f for f in plan.filters if f.field in {"container_id", REFERENCE_LEVEL_FIELD})
+            if level_filters != (expected,):
+                raise InvalidPlannerOutputError("Planner omitted or changed the requested level scope.")
+        return plan
 
     @staticmethod
     def _system_prompt() -> str:
@@ -67,8 +106,20 @@ class LLMQueryPlanner:
             "If the catalog cannot support the question, return exactly one JSON object "
             "with a non-empty unsupported string and no other keys. "
             "Allowed keys are operation, kind, name, filters, aggregate_function, "
-            "and aggregate_field. Each filter has field, operator, and value. "
+            "aggregate_field, object_ref, and requested_property. Each filter has field, operator, and value. "
             "Allowed filter operators are eq, ne, gt, gte, lt, and lte. "
+            "For spatial storey scope use field storey_name, operator eq, and the user's "
+            "storey name; the application resolves the ID. Never emit container_id. "
+            "For an explicitly requested Reference Level use field reference_level, "
+            "operator eq, and its name. This is a property-based level, never spatial "
+            "IfcBuildingStorey containment. Do not substitute it for on/in a storey. "
+            "Relationship questions such as which storey contains an object are unsupported. "
+            "For a single object property use operation find, canonical kind, object_ref "
+            "(exact name, GlobalId or exported element ID), and requested_property. "
+            "requested_property must be length, width, height, area, volume, properties, "
+            "or an exact field path explicitly present in the user question. Never select "
+            "a field path for a semantic property yourself; a local resolver decides. "
+            "Never output values, units, or executable paths. "
             "Return JSON only."
         )
 
@@ -151,6 +202,24 @@ class LLMQueryPlanner:
             payload.get("aggregate_field"), "aggregate_field"
         )
 
+        property_request = self._optional_string(payload.get("requested_property"), "requested_property")
+        object_ref = self._optional_string(payload.get("object_ref"), "object_ref")
+        if property_request is not None:
+            if operation is not QueryOperation.FIND or kind is None or aggregate_field or aggregate_function:
+                raise InvalidPlannerOutputError("Property queries require find and a canonical kind.")
+            if property_request not in {*SEMANTIC_FIELDS, "properties"} and property_request not in catalog.attributes:
+                raise InvalidPlannerOutputError("Property path is unavailable in the catalog.")
+            if not (object_ref or name):
+                raise InvalidPlannerOutputError("Property queries require an explicit object_ref.")
+            entity = resolve_object(object_ref or name, catalog.entities_by_id.values(), kind)
+            return QueryPlan(
+                operation=operation, kind=kind,
+                filters=(FilterCondition("entity_id", FilterOperator.EQ, entity.entity_id), *filters),
+                requested_property=property_request,
+            )
+        if object_ref is not None:
+            raise InvalidPlannerOutputError("object_ref requires requested_property.")
+
         self._validate_operation_fields(
             operation,
             kind,
@@ -218,6 +287,19 @@ class LLMQueryPlanner:
                 raise InvalidPlannerOutputError(
                     f"Planner filter at index {index} has a non-scalar value."
                 )
+            if field == "container_id":
+                raise InvalidPlannerOutputError("Use storey_name; internal container IDs must be resolved by the application.")
+            if field in {"storey_name", "reference_level", REFERENCE_LEVEL_FIELD}:
+                if operator is not FilterOperator.EQ or not isinstance(filter_value, str):
+                    raise InvalidPlannerOutputError("Level filters require eq and a level name.")
+                try:
+                    condition = catalog.resolve_level(
+                        filter_value, reference=field != "storey_name", kind=kind
+                    )
+                except LevelResolutionError as error:
+                    raise InvalidPlannerOutputError(str(error)) from error
+                filters.append(condition)
+                continue
             self._validate_filter_field(field, filter_value, kind, catalog)
             filters.append(FilterCondition(field, operator, filter_value))
         return tuple(filters)

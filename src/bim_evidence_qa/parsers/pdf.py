@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+import re
 
 import pymupdf
 
@@ -14,6 +15,18 @@ class DrawingPage:
     page_number: int
     text: str
     sheet_title: str | None = None
+    drawing_number: str | None = None
+
+
+def sheet_identity(text: str) -> tuple[str | None, str | None]:
+    # Revit titleblock text follows its print timestamp and precedes the project number.
+    match = re.search(r"\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM)?\s*\n(.{1,120}?)\n\d{2,}[-\w]*\n", text, re.S)
+    if not match:
+        return None, None
+    title = " ".join(match[1].split())
+    tail = text[match.end():].splitlines()[:8]
+    numbers = [line.strip() for line in tail if re.fullmatch(r"[A-Z]{1,3}\d{3,}(?:[-.]\d+)?", line.strip())]
+    return title, numbers[0] if len(numbers) == 1 else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +65,8 @@ class PyMuPDFParser:
                     DrawingPage(
                         page_number=index + 1,
                         text=page.get_text("text"),
+                        sheet_title=sheet_identity(page.get_text("text"))[0],
+                        drawing_number=sheet_identity(page.get_text("text"))[1],
                     )
                     for index, page in enumerate(document)
                 )

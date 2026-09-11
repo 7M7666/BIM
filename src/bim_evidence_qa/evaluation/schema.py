@@ -26,6 +26,17 @@ class EvaluationCase:
     expected_global_ids: tuple[str, ...]
     category: str
     expect_unsupported: bool = False
+    model: str | None = None
+    language: str = "en"
+    expected_status: str = "success"
+    expected_entity_type: str | None = None
+    expected_scope: tuple[Mapping[str, object], ...] = ()
+    requested_property: str | None = None
+    expected_object_ids: tuple[str, ...] = ()
+    expected_unit: str | None = None
+    expected_property_source: Mapping[str, object] | None = None
+    expected_candidates: tuple[str, ...] = ()
+    notes: str = ""
 
     def __post_init__(self) -> None:
         for field_name in ("id", "question", "category"):
@@ -34,7 +45,12 @@ class EvaluationCase:
                 raise ValueError(f"Evaluation case {field_name} must be non-empty.")
         if not isinstance(self.expect_unsupported, bool):
             raise ValueError("Evaluation case expect_unsupported must be boolean.")
-        if self.expect_unsupported:
+        if self.model is not None:
+            if self.expected_status not in {"success", "missing", "ambiguous", "unsupported", "entity_not_found"}:
+                raise ValueError("Invalid course expected_status.")
+            if self.expected_status == "success" and self.expected_operation is None:
+                raise ValueError("Successful course cases require an operation.")
+        elif self.expect_unsupported:
             if self.expected_operation is not None:
                 raise ValueError(
                     "Unsupported evaluation cases cannot expect an operation."
@@ -67,7 +83,10 @@ class EvaluationCase:
             "expected_global_ids",
             "category",
         }
-        allowed = required | {"expect_unsupported"}
+        course_fields = {"model", "language", "expected_status", "expected_entity_type", "expected_scope",
+                         "requested_property", "expected_object_ids", "expected_unit", "expected_property_source",
+                         "expected_candidates", "notes"}
+        allowed = required | {"expect_unsupported"} | course_fields
         missing = required - payload.keys()
         unknown = payload.keys() - allowed
         if missing:
@@ -104,6 +123,8 @@ class EvaluationCase:
             ),
             category=payload["category"],  # type: ignore[arg-type]
             expect_unsupported=payload.get("expect_unsupported", False),  # type: ignore[arg-type]
+            **{key: tuple(value) if key in {"expected_scope", "expected_object_ids", "expected_candidates"} else value
+               for key, value in payload.items() if key in course_fields},
         )
 
     @staticmethod

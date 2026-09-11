@@ -1,14 +1,16 @@
 import hashlib
+import base64
 import html
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 import streamlit as st
 
 from bim_evidence_qa.application import ApplicationQueryResult, run_question
-from bim_evidence_qa.domain import BuildingDataset, QueryPlan
+from bim_evidence_qa.domain import BuildingDataset, QueryPlan, ResolutionError
+from bim_evidence_qa.drawing import retrieve_drawings
 from bim_evidence_qa.parsers import (
     DrawingDocument,
     FixtureParseError,
@@ -67,7 +69,7 @@ UI_TEXT = {
         "planner": "查询规划器",
         "llm_planner": "LLM 规划器",
         "development_planner": "开发规划器",
-        "development_planner_note": "开发规划器仅支持有限的英文关键词。",
+        "development_planner_note": "开发规划器支持基础中文、英文及混合查询；复杂表达可能不支持。",
         "assistant_title": "向这个建筑提问",
         "empty_title": "向这个建筑提问",
         "empty_description": "上传图纸和 BIM 模型后，\n可以直接使用自然语言查询建筑信息。",
@@ -138,7 +140,7 @@ UI_TEXT = {
         "planner": "Query planner",
         "llm_planner": "LLM Planner",
         "development_planner": "Development Planner",
-        "development_planner_note": "The development planner supports limited English keywords only.",
+        "development_planner_note": "The development planner supports basic Chinese, English and mixed queries; complex phrasing may be unsupported.",
         "assistant_title": "Ask About This Building",
         "empty_title": "Ask about this building",
         "empty_description": "Upload drawings and a BIM model,\nthen ask questions in natural language.",
@@ -275,6 +277,7 @@ def main() -> None:
             st.session_state["active_project_key"] = active_project_key
             st.session_state.pop("last_outcome", None)
             st.session_state.pop("last_error_details", None)
+            st.session_state.pop("last_resolution_error", None)
             st.session_state["chat_history"] = []
         st.session_state.setdefault("chat_history", [])
 
@@ -284,6 +287,11 @@ def main() -> None:
 
         with evidence_column:
             with st.container(key="evidence_panel"):
+                outcome = st.session_state.get("last_outcome")
+                st.session_state["drawing_retrieval"] = (
+                    retrieve_drawings(outcome, dataset, uploads.drawings)
+                    if isinstance(outcome, ApplicationQueryResult) and dataset is not None else None
+                )
                 _render_evidence_panel(locale, uploads.drawings)
 
 
@@ -565,11 +573,18 @@ def _render_assistant_panel(
 def _submit_question(locale: str, dataset: BuildingDataset, planner, question: str) -> None:
     try:
         outcome = run_question(dataset, question, planner)
+    except ResolutionError as error:
+        _record_error(question, f"{error.code}: {error}", str(error))
+        st.session_state["last_resolution_error"] = error.as_dict()
     except (UnsupportedQueryError, InvalidPlannerOutputError) as error:
         _record_error(
             question,
             _text(locale, "unsupported_query"),
             str(error),
+        )
+        st.session_state["last_resolution_error"] = (
+            error.as_dict() if isinstance(error, UnsupportedQueryError) else
+            {"code": "unsupported", "message": str(error), "candidates": []}
         )
     except LLMProviderError as error:
         _record_error(
@@ -586,6 +601,7 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
     except QueryExecutionError as error:
         _record_error(question, str(error), str(error))
     else:
+        st.session_state.pop("last_resolution_error", None)
         st.session_state["last_outcome"] = outcome
         st.session_state.pop("last_error_details", None)
         st.session_state["chat_history"].append(
@@ -598,6 +614,7 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
 
 
 def _record_error(question: str, message: str, details: str) -> None:
+    st.session_state.pop("last_resolution_error", None)
     st.session_state.pop("last_outcome", None)
     st.session_state["last_error_details"] = details
     st.session_state["chat_history"].append(
@@ -631,7 +648,9 @@ def _render_evidence_panel(
             _text(locale, "ifc_evidence"),
             _text(locale, "drawing_evidence"),
             _text(locale, "query_details"),
-        )
+        ),
+        default=_text(locale, "drawing_evidence") if getattr(st.session_state.get("drawing_retrieval"), "best", None) else _text(locale, "ifc_evidence"),
+        key=f"evidence_tabs_{len(st.session_state.get('chat_history', []))}",
     )
     outcome = st.session_state.get("last_outcome")
     with tabs[0]:
@@ -648,6 +667,10 @@ def _render_ifc_evidence(
 ) -> None:
     with st.container(key="ifc_evidence_scroll"):
         if not isinstance(outcome, ApplicationQueryResult) or not outcome.answer.evidence:
+            if error := st.session_state.get("last_resolution_error"):
+                st.error(f"{error['code']}: {error['message']}")
+                if error["candidates"]:
+                    st.write(error["candidates"])
             _empty_state(_text(locale, "no_ifc_evidence"))
             return
         evidence_rows = []
@@ -679,6 +702,18 @@ def _render_ifc_evidence(
             unsafe_allow_html=True,
         )
 
+        for evidence in outcome.answer.evidence:
+            if evidence.properties:
+                st.dataframe([
+                    {
+                        "Source": p.source.value, "Set": p.set_name, "Field": p.field_name,
+                        "Value": str(p.value), "Measure Type": p.measure_type or "unavailable",
+                        "Unit": p.unit or "unit unavailable", "Unit Source": p.unit_source or "unavailable",
+                        "IFC Field ID": p.source_id, "Inherited": p.inherited,
+                    }
+                    for p in evidence.properties
+                ], hide_index=True)
+
 
 def _render_drawing_panel(
     locale: str,
@@ -690,6 +725,33 @@ def _render_drawing_panel(
             return
 
         drawing_by_name = {drawing.file_name: drawing for drawing in drawings}
+        retrieval = st.session_state.get("drawing_retrieval")
+        best = retrieval.best if retrieval else None
+        outcome = st.session_state.get("last_outcome")
+        selection_key = (st.session_state.get("active_project_key"), getattr(outcome, "question", None),
+                         len(st.session_state.get("chat_history", [])))
+        if st.session_state.get("_automatic_drawing_selection") != selection_key:
+            st.session_state["_automatic_drawing_selection"] = selection_key
+            if best:
+                st.session_state["drawing_selector"] = best.document
+                st.session_state["drawing_page_selector"] = best.page_number
+        if retrieval:
+            if best:
+                st.caption(f"{best.drawing_number or ''} · {best.sheet_title or ''} · page {best.page_number} · score {best.score}")
+                summary = "; ".join(f"{t.source}: {t.text}" for t in best.matched_terms[:3])
+                if len(best.matched_terms) > 3:
+                    summary += f"; +{len(best.matched_terms) - 3} terms"
+                st.caption(summary + ". Related sheet; IFC values remain the answer source.")
+            else:
+                st.caption(retrieval.reason)
+            with st.expander("Drawing match details", expanded=False):
+                st.json([asdict(c) for c in retrieval.candidates[:5]])
+        elif st.session_state.get("chat_history"):
+            st.caption("No reliable drawing evidence found.")
+        if not best and st.session_state.get("chat_history"):
+            st.caption("手动预览，与当前答案未建立关联。" if locale == "zh" else "Manual preview; not linked to the current answer.")
+        if st.session_state.get("drawing_selector") not in drawing_by_name:
+            st.session_state.pop("drawing_selector", None)
         selected_name = st.selectbox(
             _text(locale, "drawing"),
             tuple(drawing_by_name),
@@ -697,6 +759,8 @@ def _render_drawing_panel(
             label_visibility="collapsed",
         )
         selected_drawing = drawing_by_name[selected_name]
+        if st.session_state.get("drawing_page_selector", 1) > selected_drawing.page_count:
+            st.session_state.pop("drawing_page_selector", None)
         page_number = st.selectbox(
             _text(locale, "page"),
             tuple(range(1, selected_drawing.page_count + 1)),
@@ -712,7 +776,7 @@ def _render_drawing_panel(
             )
         else:
             st.image(
-                preview,
+                "data:image/png;base64," + base64.b64encode(preview).decode("ascii"),
                 caption=f"{selected_name} · {_text(locale, 'page')} {page_number}",
                 width="stretch",
             )
@@ -904,6 +968,7 @@ def _plan_payload(plan: QueryPlan) -> dict[str, object]:
             else None
         ),
         "aggregate_field": plan.aggregate_field,
+        "requested_property": plan.requested_property,
     }
 
 
@@ -928,6 +993,11 @@ def _ifc_type_label(kind: str) -> str:
         "door": "IfcDoor",
         "window": "IfcWindow",
         "wall": "IfcWall",
+        "beam": "IfcBeam",
+        "column": "IfcColumn",
+        "slab": "IfcSlab",
+        "footing": "IfcFooting",
+        "pile": "IfcPile",
     }.get(kind, kind)
 
 
@@ -1496,6 +1566,9 @@ def _inject_styles(locale: str) -> None:
             border: 1px solid var(--border);
             border-radius: 6px;
             margin-bottom: 8px;
+        }}
+        .st-key-evidence_panel [data-testid="stExpander"] summary [data-testid="stIconMaterial"] {{
+            display: none !important;
         }}
         .st-key-evidence_panel [data-testid="stImage"] img {{
             border: 1px solid var(--border);

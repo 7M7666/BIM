@@ -1,0 +1,84 @@
+- generic
+  - generic [ref=e1] focusable [tabindex]
+    - StaticText "BIM Evidence QA"
+    - StaticText "BIM证据问答"
+    - StaticText "开发预览"
+    - radiogroup "Language"
+      - radio "中文" [checked=true, ref=e8]
+        - paragraph
+          - StaticText "中文"
+      - radio "EN" [checked=false, ref=e9]
+        - paragraph
+          - StaticText "EN"
+    - StaticText "项目"
+    - StaticText "图纸"
+    - region "上传 PDF" [ref=e3] clickable [cursor:pointer, onclick]
+      - button "file upload" [ref=e10]: rst_basic_sample_project.pdf
+      - generic "rst_basic_sample_project.pdf, 10.3MB"
+        - StaticText "rst_bas...roject.pdf"
+        - StaticText "10.3MB"
+        - button "Remove rst_basic_sample_project.pdf" [ref=e18]
+    - StaticText "BIM 模型"
+    - region "上传 IFC" [ref=e4] clickable [cursor:pointer, onclick]
+      - button "file upload" [ref=e11]: rst_basic_sample_project.ifc
+      - generic "rst_basic_sample_project.ifc, 8.8MB"
+        - StaticText "rst_bas...roject.ifc"
+        - StaticText "8.8MB"
+        - button "Remove rst_basic_sample_project.ifc" [ref=e19]
+    - StaticText "模型概览"
+    - strong
+      - StaticText "0"
+    - StaticText "楼层"
+    - strong
+      - StaticText "1"
+    - StaticText "房间"
+    - strong
+      - StaticText "2"
+    - StaticText "门"
+    - strong
+      - StaticText "0"
+    - StaticText "窗"
+    - strong
+      - StaticText "9"
+    - StaticText "墙"
+    - group
+      - DisclosureTriangle "开发设置 −" [expanded=true]
+        - paragraph
+          - StaticText "开发设置"
+        - StaticText "−"
+      - LabelText [ref=e12] clickable [onclick]
+        - checkbox "合成开发模式" [checked=false, disabled, ref=e13]
+        - paragraph
+          - StaticText "合成开发模式"
+      - LabelText
+      - radiogroup "查询规划器"
+        - radio "LLM 规划器" [checked=false, ref=e14]
+          - paragraph
+            - StaticText "LLM 规划器"
+        - radio "开发规划器" [checked=true, ref=e15]
+          - paragraph
+            - StaticText "开发规划器"
+      - StaticText "真实项目"
+      - StaticText "开发规划器支持基础中文、英文及混合查询；复杂表达可能不支持。"
+    - generic
+      - StaticText "向这个建筑提问"
+      - StaticText "有多少根梁？"
+      - StaticText "There are 370 beams."
+      - generic
+        - textbox "输入关于当前建筑的问题..." [ref=e16]
+      - button "发送 →" [ref=e17]
+        - paragraph
+          - StaticText "发送"
+        - StaticText "→"
+    - tablist
+      - tab "IFC证据" [selected, ref=e5]
+        - paragraph
+          - StaticText "IFC证据"
+      - tab "图纸" [ref=e6]
+        - paragraph
+          - StaticText "图纸"
+      - tab "查询" [ref=e7]
+        - paragraph
+          - StaticText "查询"
+    - tabpanel "IFC证据" [ref=e2] focusable [tabindex]
+      - StaticText "暂无 IFC 证据"

@@ -1,0 +1,115 @@
+- generic
+  - generic [ref=e1] focusable [tabindex]
+    - StaticText "BIM Evidence QA"
+    - StaticText "BIM证据问答"
+    - StaticText "开发预览"
+    - radiogroup "Language"
+      - radio "中文" [checked=true, ref=e7]
+        - paragraph
+          - StaticText "中文"
+      - radio "EN" [checked=false, ref=e8]
+        - paragraph
+          - StaticText "EN"
+    - StaticText "项目"
+    - StaticText "图纸"
+    - region "上传 PDF" [ref=e2] clickable [cursor:pointer, onclick]
+      - button "file upload" [ref=e9]: rac_basic_sample_project.pdf
+      - generic "rac_basic_sample_project.pdf, 6.8MB"
+        - StaticText "rac_bas...roject.pdf"
+        - StaticText "6.8MB"
+        - button "Remove rac_basic_sample_project.pdf" [ref=e21]
+    - StaticText "BIM 模型"
+    - region "上传 IFC" [ref=e3] clickable [cursor:pointer, onclick]
+      - button "file upload" [ref=e10]: rac_basic_sample_project.ifc
+      - generic "rac_basic_sample_project.ifc, 11.5MB"
+        - StaticText "rac_bas...roject.ifc"
+        - StaticText "11.5MB"
+        - button "Remove rac_basic_sample_project.ifc" [ref=e22]
+    - StaticText "模型概览"
+    - strong
+      - StaticText "6"
+    - StaticText "楼层"
+    - strong
+      - StaticText "0"
+    - StaticText "房间"
+    - strong
+      - StaticText "16"
+    - StaticText "门"
+    - strong
+      - StaticText "17"
+    - StaticText "窗"
+    - strong
+      - StaticText "47"
+    - StaticText "墙"
+    - group
+      - DisclosureTriangle "开发设置 −" [expanded=true]
+        - paragraph
+          - StaticText "开发设置"
+        - StaticText "−"
+      - LabelText [ref=e11] clickable [onclick]
+        - checkbox "合成开发模式" [checked=false, disabled, ref=e12]
+        - paragraph
+          - StaticText "合成开发模式"
+      - LabelText
+      - radiogroup "查询规划器"
+        - radio "LLM 规划器" [checked=false, ref=e13]
+          - paragraph
+            - StaticText "LLM 规划器"
+        - radio "开发规划器" [checked=true, ref=e14]
+          - paragraph
+            - StaticText "开发规划器"
+      - StaticText "真实项目"
+      - StaticText "开发规划器支持基础中文、英文及混合查询；复杂表达可能不支持。"
+    - generic
+      - StaticText "向这个建筑提问"
+      - StaticText "有多少扇门？"
+      - StaticText "There are 16 doors."
+      - StaticText "Level 2 有多少门？"
+      - StaticText "There are 10 doors. Spatial containment: IfcBuildingStorey eq 'Level 2'."
+      - StaticText "Single-Flush:800 x 2100:422466 的宽度是多少？"
+      - StaticText "Single-Flush:800 x 2100:422466: Qto_DoorBaseQuantities.Width = 800.0 mm."
+      - generic
+        - textbox "输入关于当前建筑的问题..." [ref=e15]
+      - button "发送 →" [ref=e16]
+        - paragraph
+          - StaticText "发送"
+        - StaticText "→"
+    - tablist
+      - tab "IFC证据" [ref=e4]
+        - paragraph
+          - StaticText "IFC证据"
+      - tab "图纸" [selected, ref=e5]
+        - paragraph
+          - StaticText "图纸"
+      - tab "查询" [ref=e6]
+        - paragraph
+          - StaticText "查询"
+    - tabpanel "图纸"
+      - paragraph
+        - StaticText "A102 · Plans · page 3 · score 10"
+      - paragraph
+        - StaticText "instance mark: 103. Related sheet; IFC values remain the answer source."
+      - group
+        - DisclosureTriangle "keyboard_arrow_right Drawing match details" [expanded=false]
+          - StaticText "keyboard_arrow_right"
+          - paragraph
+            - StaticText "Drawing match details"
+      - group
+        - combobox "图纸" [expanded=false, ref=e17]: rac_basic_sample_project.pdf
+          - StaticText "rac_basic_sample_project.pdf"
+        - button "Open" [expanded=false, ref=e18]
+      - LabelText
+      - group
+        - combobox "页" [expanded=false, ref=e19]: 页 3
+          - StaticText "页 3"
+        - button "Open" [expanded=false, ref=e20]
+      - generic
+        - button "Fullscreen" [ref=e23]
+        - image "0"
+        - paragraph
+          - StaticText "rac_basic_sample_project.pdf · 页 3"
+      - StaticText "页数: 6 · 文字层可用"
+      - generic
+        - LabelText
+        - generic
+          - textbox "搜索图纸" [ref=e24]

@@ -20,10 +20,20 @@ OPERATION_ALIASES = {
     "最小的": "min", "最小": "min", "显示所有": "list", "列出": "list",
     "哪些": "list", "多少": "count", "数量": "count", "有几": "count",
 }
+OVERVIEW_ALIASES = {
+    "有什么": "overview", "有哪些": "overview", "包含": "overview",
+    "包括": "overview", "概览": "overview", "构成": "overview",
+}
 IFC_KINDS = {
     "IfcBeam": "beam", "IfcColumn": "column", "IfcSlab": "slab", "IfcFooting": "footing",
     "IfcPile": "pile", "IfcDoor": "door", "IfcWindow": "window", "IfcWall": "wall",
     "IfcSpace": "space", "IfcBuildingStorey": "storey",
+}
+OVERVIEW_ENTITY_TERMS = {
+    "room", "rooms", "space", "spaces", "door", "doors", "window", "windows",
+    "wall", "walls", "beam", "beams", "column", "columns", "slab", "slabs",
+    "footing", "footings", "pile", "piles", "storey", "storeys", "level", "levels",
+    *ENTITY_ALIASES.values(), *IFC_KINDS.values(),
 }
 
 
@@ -52,7 +62,12 @@ def normalize_question(question: str, names=()) -> str:
         question = question[match.end():]
     for alias, canonical in IFC_KINDS.items():
         question = re.sub(r"(?<![A-Za-z0-9_])" + alias + r"(?![A-Za-z0-9_])", canonical, question, flags=re.I)
-    aliases = {**ENTITY_ALIASES, **PROPERTY_ALIASES, **OPERATION_ALIASES}
+    aliases = {
+        **ENTITY_ALIASES,
+        **PROPERTY_ALIASES,
+        **OPERATION_ALIASES,
+        **OVERVIEW_ALIASES,
+    }
     pattern = "|".join(map(re.escape, sorted(aliases, key=len, reverse=True)))
     question = re.sub(pattern, lambda m: " " + aliases[m[0]] + " ", question)
     question = re.sub(r"这个|该对象|它", " unresolved_this ", question)
@@ -69,3 +84,26 @@ def normalize_question(question: str, names=()) -> str:
     for token, name in protected.items():
         question = question.replace(token, name)
     return question
+
+
+def is_overview_intent(question: str) -> bool:
+    """Recognize a project-level inventory request without selecting an entity."""
+
+    normalized = " ".join(question.casefold().split())
+    tokens = set(re.findall(r"[a-z0-9_-]+", normalized))
+    has_target = bool(
+        tokens & {"building", "model", "project"}
+        or any(marker in normalized for marker in ("建筑", "模型", "项目"))
+    )
+    if not has_target:
+        return False
+
+    specific_terms = {*OVERVIEW_ENTITY_TERMS, *PROPERTY_ALIASES.values()}
+    if tokens & specific_terms:
+        return False
+
+    has_english_overview_cue = bool(
+        tokens & {"contain", "contains", "include", "includes", "overview"}
+        or ({"kind", "kinds"} & tokens and {"element", "elements", "component", "components"} & tokens)
+    )
+    return "overview" in tokens or has_english_overview_cue

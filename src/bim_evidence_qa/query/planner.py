@@ -12,7 +12,7 @@ from bim_evidence_qa.domain import (
     UnsupportedQueryError,
 )
 from bim_evidence_qa.query.catalog import LevelResolutionError, QueryCatalog
-from bim_evidence_qa.query.terminology import normalize_question
+from bim_evidence_qa.query.terminology import is_overview_intent, normalize_question
 from bim_evidence_qa.query.properties import requested_property, resolve_object
 
 
@@ -103,6 +103,9 @@ class DevelopmentNaturalLanguagePlanner:
         question = normalize_question(question, (
             e.name for e in catalog.entities_by_id.values() if e.name and e.kind != "storey"
         ))
+        if is_overview_intent(question) and self._resolve_name(question.casefold(), catalog) is None:
+            self._require_operation(QueryOperation.OVERVIEW, catalog)
+            return QueryPlan(operation=QueryOperation.OVERVIEW)
         subject, level, reference = split_level_scope(question)
         plan = self._plan_subject(subject, catalog)
         if level is not None:

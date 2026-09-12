@@ -120,6 +120,8 @@ class LLMQueryPlanner:
             "or an exact field path explicitly present in the user question. Never select "
             "a field path for a semantic property yourself; a local resolver decides. "
             "Never output values, units, or executable paths. "
+            "For a building, model, or project overview with no specific entity or property, "
+            "use operation overview with no other query fields. "
             "Return JSON only."
         )
 
@@ -348,6 +350,16 @@ class LLMQueryPlanner:
             )
         if operation is QueryOperation.COUNT and kind is None:
             raise InvalidPlannerOutputError("Count queries require an available kind.")
+        if operation is QueryOperation.OVERVIEW:
+            if kind is not None or name is not None or filters:
+                raise InvalidPlannerOutputError(
+                    "Overview queries cannot select a specific entity or scope."
+                )
+            if aggregate_function is not None or aggregate_field is not None:
+                raise InvalidPlannerOutputError(
+                    "Overview queries cannot include aggregate fields."
+                )
+            return
         if operation is QueryOperation.FILTER and (kind is None or not filters):
             raise InvalidPlannerOutputError(
                 "Filter queries require a kind and at least one filter."

@@ -53,6 +53,10 @@ class IncompleteDataError(UnknownFieldError):
 
 
 class QueryEngine:
+    _OVERVIEW_KINDS = (
+        "storey", "space", "door", "window", "wall", "beam", "column", "slab",
+        "footing", "pile",
+    )
     _ENTITY_FIELDS = {
         "entity_id",
         "kind",
@@ -62,6 +66,17 @@ class QueryEngine:
     }
 
     def execute(self, plan: QueryPlan, dataset: BuildingDataset) -> QueryResult:
+        if plan.operation is QueryOperation.OVERVIEW:
+            counts = {
+                kind: sum(entity.kind == kind for entity in dataset.entities)
+                for kind in self._OVERVIEW_KINDS
+            }
+            return QueryResult(
+                operation=plan.operation,
+                entities=(),
+                overview_counts={kind: count for kind, count in counts.items() if count > 0},
+            )
+
         entities = self._select(plan, dataset)
         diagnostics = self._level_diagnostics(plan, dataset)
 

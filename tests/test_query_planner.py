@@ -1,11 +1,18 @@
+import os
+from collections import Counter
+from pathlib import Path
+
 import pytest
 
+from bim_evidence_qa.application import run_question
 from bim_evidence_qa.domain import (
     AggregateFunction,
     BuildingDataset,
     BuildingEntity,
     QueryOperation,
+    QueryPlan,
 )
+from bim_evidence_qa.parsers import IfcOpenShellParser
 from bim_evidence_qa.query import (
     DevelopmentNaturalLanguagePlanner,
     QueryCatalog,
@@ -108,6 +115,82 @@ def test_door_count_question_creates_count_plan(planner, catalog):
 
     assert plan.operation is QueryOperation.COUNT
     assert plan.kind == "door"
+
+
+def test_chinese_project_overview_phrases_create_the_same_plan(planner, catalog):
+    plans = [
+        planner.plan(question, catalog)
+        for question in (
+            "这个建筑有什么？",
+            "这个模型包含哪些构件？",
+            "给我概览一下这个项目。",
+        )
+    ]
+
+    assert plans == [QueryPlan(QueryOperation.OVERVIEW)] * len(plans)
+
+
+def test_english_project_overview_phrases_create_the_same_plan(planner, catalog):
+    plans = [
+        planner.plan(question, catalog)
+        for question in (
+            "What does this building contain?",
+            "What kinds of elements are in this model?",
+            "Give me a project overview.",
+        )
+    ]
+
+    assert plans == [QueryPlan(QueryOperation.OVERVIEW)] * len(plans)
+
+
+def test_overview_does_not_capture_a_specific_entity_count(planner, catalog):
+    plan = planner.plan("How many doors are there?", catalog)
+
+    assert plan == QueryPlan(QueryOperation.COUNT, kind="door")
+
+
+def test_overview_uses_each_course_model_real_entity_counts():
+    folder = os.getenv("BIM_QA_COURSE_DATA")
+    if not folder:
+        pytest.skip("Set BIM_QA_COURSE_DATA to the extracted teacher IFC folder")
+
+    parser = IfcOpenShellParser()
+    overview_kinds = {
+        "storey", "space", "door", "window", "wall", "beam", "column", "slab",
+        "footing", "pile",
+    }
+    datasets = {
+        name: parser.parse(Path(folder) / name)
+        for name in (
+            "rac_basic_sample_project.ifc",
+            "rst_basic_sample_project.ifc",
+        )
+    }
+    outcomes = {
+        name: run_question(
+            datasets[name],
+            question,
+            DevelopmentNaturalLanguagePlanner(),
+        )
+        for name, question in (
+            ("rac_basic_sample_project.ifc", "What does this building contain?"),
+            ("rst_basic_sample_project.ifc", "这个模型包含哪些构件？"),
+        )
+    }
+
+    for name, outcome in outcomes.items():
+        expected = {
+            kind: count
+            for kind, count in Counter(
+                entity.kind for entity in datasets[name].entities
+            ).items()
+            if kind in overview_kinds and count > 0
+        }
+        assert outcome.plan == QueryPlan(QueryOperation.OVERVIEW)
+        assert outcome.result.overview_counts == expected
+        assert all(count > 0 for count in outcome.result.overview_counts.values())
+
+    assert "storey" not in outcomes["rst_basic_sample_project.ifc"].result.overview_counts
 
 
 def test_unknown_entity_is_rejected(planner, catalog):

@@ -75,6 +75,7 @@ class QueryOperation(str, Enum):
     COUNT = "count"
     FILTER = "filter"
     AGGREGATE = "aggregate"
+    OVERVIEW = "overview"
 
 
 class FilterOperator(str, Enum):
@@ -124,6 +125,10 @@ class QueryPlan:
             raise ValueError(
                 "aggregate_function and aggregate_field are only valid for aggregate queries."
             )
+        if self.operation is QueryOperation.OVERVIEW and (
+            self.kind is not None or self.name is not None or self.filters
+        ):
+            raise ValueError("Overview queries cannot select a specific entity or scope.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,3 +138,4 @@ class QueryResult:
     value: ScalarValue = None
     diagnostics: tuple[str, ...] = ()
     properties: tuple[PropertyValue, ...] = ()
+    overview_counts: Mapping[str, int] = field(default_factory=dict)

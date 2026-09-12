@@ -75,6 +75,19 @@ class AnswerBuilder:
             kind = plan.kind or "entity"
             return "ok", f"There are {result.value} {kind}s."
 
+        if plan.operation is QueryOperation.OVERVIEW:
+            labels = {
+                "storey": "storeys", "space": "spaces", "door": "doors",
+                "window": "windows", "wall": "walls", "beam": "beams",
+                "column": "columns", "slab": "slabs", "footing": "footings",
+                "pile": "piles",
+            }
+            summary = ", ".join(
+                f"{count} {labels[kind]}"
+                for kind, count in result.overview_counts.items()
+            )
+            return "ok", f"Project overview: {summary}."
+
         if plan.operation is QueryOperation.FIND:
             if not result.entities:
                 return "not_found", "No matching entities were found."
@@ -141,6 +154,18 @@ class AnswerBuilder:
             return "ok", f"{name} 的{field}为 {prop.value} {prop.unit or '（单位不可用）'}。"
         if plan.operation is QueryOperation.COUNT:
             return "ok", f"{'符合条件的对象' if plan.filters else '这个建筑'}共有 {result.value} {kinds.get(plan.kind, '个对象')}。"
+        if plan.operation is QueryOperation.OVERVIEW:
+            labels = {
+                "storey": "层楼", "space": "个房间", "door": "扇门",
+                "window": "扇窗", "wall": "面墙", "beam": "根梁",
+                "column": "根柱", "slab": "块楼板", "footing": "个基础",
+                "pile": "根桩",
+            }
+            summary = "、".join(
+                f"{count} {labels[kind]}"
+                for kind, count in result.overview_counts.items()
+            )
+            return "ok", f"项目概览：{summary}。"
         if plan.operation in (QueryOperation.FIND, QueryOperation.FILTER):
             if not result.entities:
                 return "not_found", "没有找到对应的 BIM 对象。"

@@ -11,6 +11,7 @@ from bim_evidence_qa.domain import (
     BuildingEntity,
     QueryOperation,
     QueryPlan,
+    ResolutionError,
 )
 from bim_evidence_qa.parsers import IfcOpenShellParser
 from bim_evidence_qa.query import (
@@ -122,7 +123,9 @@ def test_chinese_project_overview_phrases_create_the_same_plan(planner, catalog)
         planner.plan(question, catalog)
         for question in (
             "这个建筑有什么？",
+            "这个模型包含什么？",
             "这个模型包含哪些构件？",
+            "有哪些构件？",
             "给我概览一下这个项目。",
         )
     ]
@@ -136,6 +139,7 @@ def test_english_project_overview_phrases_create_the_same_plan(planner, catalog)
         for question in (
             "What does this building contain?",
             "What kinds of elements are in this model?",
+            "Give me an overview of this model.",
             "Give me a project overview.",
         )
     ]
@@ -191,6 +195,25 @@ def test_overview_uses_each_course_model_real_entity_counts():
         assert all(count > 0 for count in outcome.result.overview_counts.values())
 
     assert "storey" not in outcomes["rst_basic_sample_project.ifc"].result.overview_counts
+
+
+def test_course_storey_count_uses_only_ifc_building_storey_entities():
+    folder = os.getenv("BIM_QA_COURSE_DATA")
+    if not folder:
+        pytest.skip("Set BIM_QA_COURSE_DATA to the extracted teacher IFC folder")
+
+    parser = IfcOpenShellParser()
+    rac = parser.parse(Path(folder) / "rac_basic_sample_project.ifc")
+    rst = parser.parse(Path(folder) / "rst_basic_sample_project.ifc")
+    planner = DevelopmentNaturalLanguagePlanner()
+
+    rac_outcome = run_question(rac, "有几层楼？", planner)
+    assert rac_outcome.plan == QueryPlan(QueryOperation.COUNT, kind="storey")
+    assert rac_outcome.result.value == sum(entity.kind == "storey" for entity in rac.entities)
+
+    with pytest.raises(ResolutionError) as error:
+        planner.plan("有几层楼？", QueryCatalog.from_dataset(rst))
+    assert error.value.code == "missing_storey_data"
 
 
 def test_unknown_entity_is_rejected(planner, catalog):

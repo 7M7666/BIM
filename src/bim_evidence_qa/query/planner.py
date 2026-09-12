@@ -215,6 +215,12 @@ class DevelopmentNaturalLanguagePlanner:
             return None
         kind = kinds[0]
         if kind not in catalog.kinds:
+            if kind == "storey":
+                raise ResolutionError(
+                    "missing_storey_data",
+                    "The IFC model has no IfcBuildingStorey entities, so its "
+                    "storey count cannot be determined from spatial hierarchy.",
+                )
             raise UnsupportedQueryError(
                 f"Entity kind '{kind}' is not available in the current dataset."
             )

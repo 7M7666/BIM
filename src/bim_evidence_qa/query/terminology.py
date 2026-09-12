@@ -21,7 +21,7 @@ OPERATION_ALIASES = {
     "哪些": "list", "多少": "count", "数量": "count", "有几": "count",
 }
 OVERVIEW_ALIASES = {
-    "有什么": "overview", "有哪些": "overview", "包含": "overview",
+    "有什么": "overview", "包含": "overview",
     "包括": "overview", "概览": "overview", "构成": "overview",
 }
 IFC_KINDS = {
@@ -95,7 +95,8 @@ def is_overview_intent(question: str) -> bool:
         tokens & {"building", "model", "project"}
         or any(marker in normalized for marker in ("建筑", "模型", "项目"))
     )
-    if not has_target:
+    has_implicit_current_model = "list" in tokens and "构件" in normalized
+    if not has_target and not has_implicit_current_model:
         return False
 
     specific_terms = {*OVERVIEW_ENTITY_TERMS, *PROPERTY_ALIASES.values()}
@@ -106,4 +107,4 @@ def is_overview_intent(question: str) -> bool:
         tokens & {"contain", "contains", "include", "includes", "overview"}
         or ({"kind", "kinds"} & tokens and {"element", "elements", "component", "components"} & tokens)
     )
-    return "overview" in tokens or has_english_overview_cue
+    return has_implicit_current_model or "overview" in tokens or has_english_overview_cue

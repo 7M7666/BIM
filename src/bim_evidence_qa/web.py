@@ -8,6 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from bim_evidence_qa import __version__
 from bim_evidence_qa.answering import AnswerBuilder
 from bim_evidence_qa.application import ApplicationQueryResult, run_question
 from bim_evidence_qa.domain import BuildingDataset, QueryOperation, QueryPlan, ResolutionError
@@ -54,6 +55,7 @@ UI_TEXT = {
         "entity_not_found": "没有找到对应的 BIM 对象。",
         "ambiguous": "存在多个可能匹配的对象或字段，无法唯一确定。请选择下方具体候选。",
         "unsupported": "当前项目数据无法可靠回答这个问题。",
+        "missing_storey_data": "当前 IFC 模型中没有 IfcBuildingStorey 楼层实体，因此无法从空间层级确定建筑楼层数。",
         "manual_drawings": "手动浏览图纸",
         "manual_note": "手动浏览内容与当前答案未建立证据关联。",
         "no_reliable_drawing": "未找到可靠的对应图纸证据。",
@@ -150,6 +152,7 @@ UI_TEXT = {
         "entity_not_found": "No matching BIM object was found.",
         "ambiguous": "Multiple objects or fields match. Please choose a specific candidate below.",
         "unsupported": "The current project data cannot reliably answer this question.",
+        "missing_storey_data": "This IFC model has no IfcBuildingStorey entities, so its storey count cannot be determined from spatial hierarchy.",
         "manual_drawings": "Browse drawings manually",
         "manual_note": "Manual browsing is not linked as evidence for the current answer.",
         "no_reliable_drawing": "No reliable drawing evidence found.",
@@ -362,7 +365,8 @@ def _render_header(locale: str) -> None:
         with title_column:
             st.markdown(
                 "<div class='product-lockup'>"
-                "<div class='product-title'>BIM Evidence QA</div>"
+                "<div class='product-title'>BIM Evidence QA "
+                f"<span class='product-version'>v{__version__}</span></div>"
                 f"<div class='product-subtitle'>{'BIM证据问答' if locale == 'zh' else 'BIM Evidence QA'}</div>"
                 "</div>",
                 unsafe_allow_html=True,
@@ -1217,6 +1221,13 @@ def _inject_styles(locale: str) -> None:
             font-size: 20px;
             font-weight: 700;
             letter-spacing: -0.02em;
+        }}
+        .product-version {{
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0;
+            vertical-align: middle;
         }}
         .product-subtitle {{
             color: var(--muted);

@@ -81,6 +81,7 @@ def test_app_defaults_to_chinese_llm_planner_without_runtime_errors():
     assert not app.toggle
     assert len(app.button_group) == 1
     assert not app.checkbox
+    assert any("v0.1.0" in item.value for item in app.markdown)
     assert [tab.label for tab in app.tabs] == ["IFC证据", "图纸证据"]
     app.query_params["dev"] = "1"
     app.run()
@@ -132,6 +133,20 @@ def test_resolution_errors_use_locale_and_preserve_candidates(monkeypatch, synth
     web._submit_question(locale, synthetic_dataset, object(), "面积？")
     assert state["chat_history"][0]["answer"] == UI_TEXT[locale][code]
     assert state["last_resolution_error"]["candidates"] == ["Qto_Test.Area [#123]"]
+
+
+def test_missing_storey_data_uses_the_explicit_chinese_ifc_status(monkeypatch):
+    from bim_evidence_qa.domain import BuildingDataset, BuildingEntity
+    from bim_evidence_qa.query import DevelopmentNaturalLanguagePlanner
+
+    state = {"chat_history": []}
+    monkeypatch.setattr(web.st, "session_state", state)
+    dataset = BuildingDataset((BuildingEntity("beam-1", "beam"),))
+
+    web._submit_question("zh", dataset, DevelopmentNaturalLanguagePlanner(), "有几层楼？")
+
+    assert state["chat_history"][0]["answer"] == UI_TEXT["zh"]["missing_storey_data"]
+    assert state["last_resolution_error"]["code"] == "missing_storey_data"
 
 
 def test_developer_toggle_preserves_debug_information_and_language_switch():

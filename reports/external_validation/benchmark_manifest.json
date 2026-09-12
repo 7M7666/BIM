@@ -1,0 +1,106 @@
+{
+  "benchmark": "IFC-Bench V2",
+  "source": "https://huggingface.co/datasets/sylvainHellin/ifc-bench",
+  "revision": "66c0737e7a48d7e0ce9303f213d88f670cb27855",
+  "retrieved_at": "2026-09-12T03:06:11.158908+00:00",
+  "observed_total_questions": 1026,
+  "observed_project_folders": 22,
+  "observed_model_files": 50,
+  "qa_projects": 19,
+  "questions_file": {
+    "path": "questions/ifc-bench-v2.csv",
+    "sha256": "93c293924899e6b0cd2d77cf2e7652189247582d3c85fb8104683d6b71e848d6"
+  },
+  "selected_files": [
+    {
+      "path": "projects/4351/arc.ifc",
+      "bytes": 7288853,
+      "sha256": "96077863a6734f574fadc33c77199a9b82222fc4b3f4c0da6612eef9347c99a9"
+    },
+    {
+      "path": "projects/4351/license.txt",
+      "bytes": 664,
+      "sha256": "47ae3548194e4defc3400ba1b54a71966f5bc913211cd3a348c68235d8d4b19b"
+    },
+    {
+      "path": "projects/4351/model_card.md",
+      "bytes": 453,
+      "sha256": "67eab980fad3cba4db40ff31c41b7759e5701c46a138b56d100b799ce8b08113"
+    },
+    {
+      "path": "projects/ac20/arc.ifc",
+      "bytes": 10934237,
+      "sha256": "cfb2124497b25d9a72101075e84be0feb44ff669cb1bd3251be11efebeea945c"
+    },
+    {
+      "path": "projects/ac20/license.txt",
+      "bytes": 355,
+      "sha256": "df953f8d88f873720f4b819fc580b1dc9c3f4f1ff5e16c946d7bd4c35bcf3cf6"
+    },
+    {
+      "path": "projects/ac20/model_card.md",
+      "bytes": 506,
+      "sha256": "19d0cd1f59f81cd15484df2c71ad307fb76cf3088eb6d1cb2e92511e2a7b00ef"
+    },
+    {
+      "path": "projects/fantasy_hotel_1/arc.ifc",
+      "bytes": 8455469,
+      "sha256": "cd976f3e9222a49ad072078ed27934f20dbc11c889271b1ee3c1ab4ce504a03e"
+    },
+    {
+      "path": "projects/fantasy_hotel_1/license.txt",
+      "bytes": 1094,
+      "sha256": "4ed1230e1a64393492643218e984c08b37dc2ae1369c56c85804effc311459d5"
+    },
+    {
+      "path": "projects/fantasy_hotel_1/model_card.md",
+      "bytes": 429,
+      "sha256": "3f55ce8326c5d00ad578e16824bea7b0aaa1fa514e771aee46290d30b9b03be8"
+    },
+    {
+      "path": "projects/molio/arc.ifc",
+      "bytes": 73945142,
+      "sha256": "626654e3b62648d3f0499e17c04d4f087931f048ddf79410f6cb90e45004c086"
+    },
+    {
+      "path": "projects/molio/license.txt",
+      "bytes": 328,
+      "sha256": "0e7810040d1aff5bd870bef7cf5c4675a6fb11a49113c7115152b4a8b8efd810"
+    },
+    {
+      "path": "projects/molio/model_card.md",
+      "bytes": 478,
+      "sha256": "098d46b0529b39575ec4aac4d675c727f97a57a5d6f86864fa04b0da398b99a5"
+    },
+    {
+      "path": "projects/wbdg_office/arc.ifc",
+      "bytes": 4099293,
+      "sha256": "7108485ac8d2856922a83f1353aea8c6eaab60ff393546750bf648200617a544"
+    },
+    {
+      "path": "projects/wbdg_office/license.txt",
+      "bytes": 404,
+      "sha256": "9e3e0deafee61941c22d85bd744e9ab0e870691017600a97f24e5fa2a9b62298"
+    },
+    {
+      "path": "projects/wbdg_office/mep.ifc",
+      "bytes": 41894594,
+      "sha256": "835263f1a9f84663e19b2d1a73420a09919293d7932a3a514d1fa26ede3dcc1e"
+    },
+    {
+      "path": "projects/wbdg_office/model_card.md",
+      "bytes": 771,
+      "sha256": "0087e82d8d795560c6c0078aa03fc107a4d13a42c3e8f9fe45e4c6730a5373cf"
+    },
+    {
+      "path": "projects/wbdg_office/str.ifc",
+      "bytes": 11067475,
+      "sha256": "3286777da15bac8a5b2bffaa14fd10a34fa72cbdfbabc8b072c05737f4c280cb"
+    }
+  ],
+  "dataset_license": "CC BY 4.0",
+  "models_license": "4351 GPLv3; fantasy_hotel_1 MIT; ac20/molio/wbdg_office CC BY 4.0. Model files retained solely in external local cache; not redistributed.",
+  "attribution": "IFC-Bench by Sylvain Hellin and contributors. Official questions and answers reproduced unchanged under CC BY 4.0; capability labels and language versions are our additions. Individual authors retained in project license sources.",
+  "cache_location": "Outside repository: user cache/bim-evidence-qa/ifc-bench (configure --cache path)",
+  "selected_total_questions": 271
+}

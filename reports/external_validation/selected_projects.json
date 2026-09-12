@@ -1,0 +1,43 @@
+{
+  "frozen_at": "2026-09-12T03:04:09.330163+00:00",
+  "seed": 20260912,
+  "method": "sorted(random.Random(seed).sample(sorted(eligible_projects), 5)); all official questions in each selected project retained; no replacement on download or parser failure",
+  "eligible_projects": [
+    "4351",
+    "ac20",
+    "dental_clinic",
+    "digital_hub",
+    "duplex",
+    "ettenheim_gis",
+    "fantasy_hotel_1",
+    "fantasy_office_building_1",
+    "fantasy_office_building_2",
+    "fantasy_office_building_3",
+    "fantasy_residential_building_1",
+    "fzk_house",
+    "hitos",
+    "molio",
+    "schependomlaan",
+    "sixty5",
+    "smiley_west",
+    "wbdg_office"
+  ],
+  "excluded": {
+    "samuel_macalister_sample_house": "Conservative exclusion of Autodesk sample-house lineage potentially overlapping course Revit samples; before any model load or system run.",
+    "projects_without_questions": "Not eligible for QA evaluation."
+  },
+  "selected_projects": [
+    "4351",
+    "ac20",
+    "fantasy_hotel_1",
+    "molio",
+    "wbdg_office"
+  ],
+  "benchmark_revision": "66c0737e7a48d7e0ce9303f213d88f670cb27855",
+  "prior_development_projects": [
+    "course RAC",
+    "course RST",
+    "synthetic/development-only fixtures"
+  ],
+  "selection_did_not_use_system_results": true
+}

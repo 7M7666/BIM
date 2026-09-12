@@ -10,7 +10,7 @@ import streamlit as st
 
 from bim_evidence_qa.answering import AnswerBuilder
 from bim_evidence_qa.application import ApplicationQueryResult, run_question
-from bim_evidence_qa.domain import BuildingDataset, QueryPlan, ResolutionError
+from bim_evidence_qa.domain import BuildingDataset, QueryOperation, QueryPlan, ResolutionError
 from bim_evidence_qa.drawing import retrieve_drawings
 from bim_evidence_qa.parsers import (
     DrawingDocument,
@@ -45,6 +45,10 @@ SYNTHETIC_FIXTURE = (
 
 UI_TEXT = {
     "zh": {
+        "statistical_drawing_note": "当前回答来自 IFC 模型统计，未找到可直接证明该统计结果的单一图纸页。",
+        "drawing_examples": "相关图纸示例",
+        "drawing_example_note": "该页面用于展示相关构件，不直接证明当前统计结果。",
+
         "development_mode": "开发模式",
         "missing": "该对象的 IFC 数据中没有找到这个属性。",
         "entity_not_found": "没有找到对应的 BIM 对象。",
@@ -137,6 +141,10 @@ UI_TEXT = {
         "missing_container_many": "{count} 个{kind}缺少空间容器",
     },
     "en": {
+        "statistical_drawing_note": "The answer comes from IFC model statistics. No single drawing page directly proves this result.",
+        "drawing_examples": "Related drawing examples",
+        "drawing_example_note": "This page illustrates related elements; it does not directly prove the statistical result.",
+
         "development_mode": "Developer mode",
         "missing": "The property was not found in this object’s IFC data.",
         "entity_not_found": "No matching BIM object was found.",
@@ -267,9 +275,10 @@ def main() -> None:
         with project_column:
             with st.container(key="project_panel"):
                 uploads = _render_project_panel(locale)
-                development_mode = st.toggle(_text(locale, "development_mode"), value=False, key="development_mode")
+                development_mode = st.query_params.get("dev") == "1"
+                st.session_state["development_mode"] = development_mode
                 use_synthetic = st.session_state.get("_use_synthetic", False)
-                planner_mode = st.session_state.get("_planner_mode", "llm")
+                planner_mode = st.session_state.get("_planner_mode", os.getenv("BIM_QA_UI_PLANNER", "llm"))
                 if development_mode:
                     with st.expander(_text(locale, "development_settings"), expanded=False):
                         use_synthetic = st.checkbox(
@@ -279,7 +288,7 @@ def main() -> None:
                             key="use_synthetic",
                         )
                         planner_control_key = f"planner_mode_control_{locale}"
-                        st.session_state.setdefault("_planner_mode", "llm")
+                        st.session_state.setdefault("_planner_mode", planner_mode)
                         planner_labels = {
                             "llm": _text(locale, "llm_planner"),
                             "development": _text(locale, "development_planner"),
@@ -313,7 +322,8 @@ def main() -> None:
                     use_synthetic=use_synthetic,
                     synthetic_dataset=synthetic_dataset,
                 )
-                _render_project_mode_badge(locale, data_source)
+                if development_mode or data_source == "Synthetic Development Project":
+                    _render_project_mode_badge(locale, data_source)
                 if dataset is not None:
                     for warning in _ifc_warnings(dataset, locale):
                         _status(warning, "neutral")
@@ -808,13 +818,26 @@ def _render_drawing_panel(
     drawings: tuple[DrawingDocument, ...],
 ) -> None:
     with st.container(key="drawing_evidence_scroll"):
+        outcome = st.session_state.get("last_outcome")
+        statistical = isinstance(outcome, ApplicationQueryResult) and (
+            outcome.plan.operation in (QueryOperation.COUNT, QueryOperation.FILTER, QueryOperation.AGGREGATE)
+            or len(outcome.result.entities) != 1
+        )
+        if statistical:
+            st.caption(_text(locale, "statistical_drawing_note"))
         if not drawings:
             _empty_state(_text(locale, "no_drawing_evidence"))
             return
 
         retrieval = st.session_state.get("drawing_retrieval")
         best = retrieval.best if retrieval else None
-        if best:
+        if best and statistical:
+            with st.expander(_text(locale, "drawing_examples"), expanded=False):
+                st.caption(_text(locale, "drawing_example_note"))
+                st.caption(f"{best.drawing_number or best.document} · {_text(locale, 'page')} {best.page_number}")
+                matched_document = next(d for d in drawings if d.file_name == best.document)
+                _render_drawing_page(locale, matched_document, best.page_number)
+        elif best:
             st.caption(_text(locale, "related_drawing"))
             st.caption(f"{_text(locale, 'drawing')}：{best.drawing_number or best.document} · {_text(locale, 'page')} {best.page_number}")
             st.caption(f"{_text(locale, 'match_basis')}：" + "; ".join(_drawing_term_label(locale, t.source, t.text) for t in best.matched_terms[:3]))
@@ -825,7 +848,7 @@ def _render_drawing_panel(
             st.caption(_text(locale, "no_reliable_drawing"))
             if isinstance(st.session_state.get("last_outcome"), ApplicationQueryResult):
                 st.caption(_text(locale, "ifc_answer_source"))
-        if retrieval:
+        if retrieval and (not statistical or st.session_state.get("development_mode", False)):
             with st.expander(_text(locale, "match_details"), expanded=False):
                 if st.session_state.get("development_mode", False):
                     st.json([asdict(c) for c in retrieval.candidates[:5]])

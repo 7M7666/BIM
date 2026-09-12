@@ -1,0 +1,57 @@
+{
+  "frozen_at": "2026-09-12T03:04:09.330163+00:00",
+  "part_a": {
+    "changed_files": [
+      "src/bim_evidence_qa/web.py",
+      "tests/test_web.py"
+    ],
+    "pytest": {
+      "passed": 386,
+      "failed": 0,
+      "skipped": 0,
+      "xfailed": 0
+    },
+    "diff_check": "passed",
+    "browser": "RST wall count 9 with no visible direct PDF; footing 1178029 automatic drawing; EN; internal dev entry; no ordinary developer toggle or real-project badge"
+  },
+  "git_commit": "f691314aaa4f618d3e2e65e678c3d014d80d2f5f",
+  "working_tree_diff_sha256": "877156a1b4bc3b48fcad895b65717ac8196cf1f4140221f60c021ddb24b61b62",
+  "source_sha256": {
+    "src/bim_evidence_qa/__init__.py": "b6a0b5ffcc1180aa8c4e45221b46c4498f8e5b4dab48679ab931af6b8b7367b8",
+    "src/bim_evidence_qa/answering.py": "dfef4040484ce0e8c5b7cf86deaca163de28bc097375425cd2adbf9c1183cd3f",
+    "src/bim_evidence_qa/application.py": "bfe57d091cfcd69653e007bcbe4beafd060dac4d9546c336268669d6b54c27a8",
+    "src/bim_evidence_qa/cli.py": "cbbb1b2e3fceb31125e53ea2e0519f75d0cf6053734ee0325e4d2a51c2124710",
+    "src/bim_evidence_qa/domain.py": "92620e12db8551652f7bbdb3533b4fbd0058d60775393fc16f423a1c69907dca",
+    "src/bim_evidence_qa/drawing.py": "8184c68d60712cef63ea8c782a1cebe22799bd5c17d320851990f362803bc932",
+    "src/bim_evidence_qa/evaluation/__init__.py": "662aa9c7e92c6847268f95cfc0b828a2a218e195dcf0cc73db3a6a4dfe1ea179",
+    "src/bim_evidence_qa/evaluation/__main__.py": "fc410ffebe1d2eaffb4e5114567739ee3e851ee5d8a08aa5279ed3d6f392b5fe",
+    "src/bim_evidence_qa/evaluation/course.py": "89b41f2d54060bb432500eab48814ae74462ef86475e6a7be6b86a3041687576",
+    "src/bim_evidence_qa/evaluation/course_ground_truth.py": "09d088ae849e70e03d365d16775029e185e43df3fb39e53b3791e56a3d579c39",
+    "src/bim_evidence_qa/evaluation/development_cases.py": "fd1ba8541e7b090b0ab576be11eb46876401138c878cafae7de5b0d7914b7fa9",
+    "src/bim_evidence_qa/evaluation/metrics.py": "ddd07dbb94e40bce3e81d40bd27d76b9cb0feeb3e185b769b11c12c1b8ddcf9c",
+    "src/bim_evidence_qa/evaluation/runner.py": "0fac5e59ce73017e415bbfefda23aa4d40fc455bcc34b37725f3124dd0565ae2",
+    "src/bim_evidence_qa/evaluation/schema.py": "d8764df640d4c1b178688f55708463ece4b8dfb8d0e4914220d05678ed3a61f2",
+    "src/bim_evidence_qa/llm_smoke.py": "ee40ecbd3128aeb8b7deaddc1e611089436251f3f2652945e5de724f512fbc2f",
+    "src/bim_evidence_qa/parsers/__init__.py": "d598e1bee27586a4eca8a56aa97af3be69f6975c7c383a0695d67b990a35e8fc",
+    "src/bim_evidence_qa/parsers/base.py": "747c4a2796ea6dd890d92a9b380e6c575784215d487fca52bf705f4b56bd39f8",
+    "src/bim_evidence_qa/parsers/fixture.py": "08a583418b5776cdadee475c011e62c7a2b4edeb9fa38e9d3a5177499a833d32",
+    "src/bim_evidence_qa/parsers/ifc.py": "94108f139934b278bcfb1a82245072b650e4195a0dac71b7ba6fd086fa0857df",
+    "src/bim_evidence_qa/parsers/pdf.py": "035251e0cdff15f9373f0462123b0a8b7490f36bf9f55c6528fa083fb2581a3c",
+    "src/bim_evidence_qa/profile_project.py": "7fb2ad4d7a618aff0d8ee83961126c6eb484d1f45d95c4f962dec4cbaae77b60",
+    "src/bim_evidence_qa/query/__init__.py": "c0244a3f87df5ca40a4a078f84e09b392d80a05b7aadfa5b199111d672dd9505",
+    "src/bim_evidence_qa/query/catalog.py": "45f3ce06b0b3166d6a818bb19c2db18c78e633bae2006c31d8d5e1e6fbdd1103",
+    "src/bim_evidence_qa/query/engine.py": "12e18b4310af830e885d90854a8c6f7cf2c92796fad26e2d522e66572bead1d9",
+    "src/bim_evidence_qa/query/llm_planner.py": "bfc8e34fadbca5dacd64f05b7dfe45da5584462e4eb9d3ef8a403f62703772e6",
+    "src/bim_evidence_qa/query/llm_provider.py": "97573342cdf1f9ebc4917bd4b7922efba00c4383b44a2b359e5fc9b5189d8e3c",
+    "src/bim_evidence_qa/query/planner.py": "617501155ce010ec72bb860615d5edadce8777dd500d9be7c1c5aad9642ae797",
+    "src/bim_evidence_qa/query/properties.py": "20c876e6adf67f45457b683ddde360daded33042f53785c4007566c3dd41476e",
+    "src/bim_evidence_qa/query/terminology.py": "1238493f149a30880695d7d698400cf52b73592a717b6f6724e3a196f5e17f2e",
+    "src/bim_evidence_qa/web.py": "d890bdf875778e98b5d26215ad3fde2bfc93bbfb31aa23ebb8f0792c480aeb76"
+  },
+  "scope": "External adapter and scoring only. No planner/engine/parser/terminology/retrieval changes after this freeze. No use of engine to author ground truth.",
+  "credentials_present": {
+    "BIM_QA_LLM_API_KEY": false,
+    "BIM_QA_LLM_ENDPOINT": false,
+    "BIM_QA_LLM_MODEL": false
+  }
+}

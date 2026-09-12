@@ -78,11 +78,12 @@ def test_app_defaults_to_chinese_llm_planner_without_runtime_errors():
     )
 
     assert not list(app.exception)
-    assert app.toggle(key="development_mode").value is False
+    assert not app.toggle
     assert len(app.button_group) == 1
     assert not app.checkbox
     assert [tab.label for tab in app.tabs] == ["IFC证据", "图纸证据"]
-    app.toggle(key="development_mode").set_value(True).run()
+    app.query_params["dev"] = "1"
+    app.run()
     assert app.button_group[1].value == UI_TEXT["zh"]["llm_planner"]
     assert app.checkbox[0].value is False
     assert app.text_input[0].disabled is True
@@ -135,21 +136,24 @@ def test_resolution_errors_use_locale_and_preserve_candidates(monkeypatch, synth
 
 def test_developer_toggle_preserves_debug_information_and_language_switch():
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
-    app.toggle(key="development_mode").set_value(True).run()
+    app.query_params["dev"] = "1"
+    app.run()
     app.checkbox(key="use_synthetic").check().run()
     app.button_group(key="planner_mode_control_zh").set_value("开发规划器").run()
     app.text_input[0].set_value("How many rooms are there?")
     app.button[0].click().run()
     assert not app.exception
     assert len(app.json) == 2
-    app.toggle(key="development_mode").set_value(False).run()
+    app.query_params.clear()
+    app.run()
     assert not app.json
     assert len(app.tabs) == 2
     assert not app.checkbox
     assert "这个建筑共有 5 个房间。" in " ".join(x.value for x in app.markdown)
     app.button_group(key="ui_language").set_value("EN").run()
     assert "There are 5 spaces." in " ".join(x.value for x in app.markdown)
-    app.toggle(key="development_mode").set_value(True).run()
+    app.query_params["dev"] = "1"
+    app.run()
     assert len(app.json) == 2
     assert app.button_group(key="planner_mode_control_en").value == "Development Planner"
 
@@ -175,3 +179,44 @@ _render_drawing_panel('zh', (doc,))
     assert len(manual.get("image")) == len(app.get("image")) == 1
     assert any("未找到可靠" in c.value for c in app.caption)
     assert any("未建立证据关联" in c.value for c in manual.caption)
+
+
+@pytest.mark.parametrize("operation", ("count", "filter", "aggregate", "find"))
+def test_collection_drawings_are_examples_not_direct_evidence(operation):
+    app = AppTest.from_string("""
+import streamlit as st
+import pymupdf
+from bim_evidence_qa.application import ApplicationQueryResult
+from bim_evidence_qa.answering import AnswerBuilder
+from bim_evidence_qa.domain import QueryOperation, QueryPlan, QueryResult, AggregateFunction
+from bim_evidence_qa.drawing import DrawingEvidence, DrawingRetrieval
+from bim_evidence_qa.parsers.pdf import PyMuPDFParser
+from bim_evidence_qa.web import _render_drawing_panel
+op = QueryOperation(st.session_state['operation'])
+kwargs = dict(aggregate_function=AggregateFunction.MAX, aggregate_field='area') if op == QueryOperation.AGGREGATE else {}
+plan = QueryPlan(op, kind='wall', **kwargs)
+result = QueryResult(op, (), 9)
+st.session_state['last_outcome'] = ApplicationQueryResult('question', plan, result, AnswerBuilder().build(plan,result))
+pdf = pymupdf.open(); pdf.new_page()
+doc = PyMuPDFParser().parse_bytes(pdf.tobytes(), file_name='test.pdf')
+st.session_state['drawing_retrieval'] = DrawingRetrieval((DrawingEvidence(doc.file_name,1,'Plans',(),10,'match','S202'),),'match')
+_render_drawing_panel('zh',(doc,))
+""")
+    app.session_state['operation'] = operation
+    app.run()
+    assert not app.exception
+    assert any('未找到可直接证明' in c.value for c in app.caption)
+    assert not any(c.value == '相关图纸证据' for c in app.caption)
+    examples = next(e for e in app.expander if e.label == '相关图纸示例')
+    assert not examples.proto.expanded
+    assert len(examples.get('image')) == 1
+    assert any('不直接证明当前统计结果' in c.value for c in examples.caption)
+
+
+def test_real_project_badge_is_hidden_in_classroom_mode(monkeypatch, synthetic_dataset):
+    uploads = web.ParsedUploads((), synthetic_dataset, True, True, ('test',), ())
+    monkeypatch.setattr(web, '_render_project_panel', lambda locale: uploads)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / 'app.py').run()
+    assert not app.toggle
+    assert not any('真实项目' in x.value for x in app.markdown)
+    assert not any(e.label == '开发设置' for e in app.expander)

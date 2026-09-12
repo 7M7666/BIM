@@ -1,0 +1,40 @@
+{
+  "frozen_at": "2026-09-12T03:08:51.458993+00:00",
+  "annotation_author": "Codex; semantic review of all selected official questions before system execution",
+  "supported_ids": [
+    23,
+    24,
+    55,
+    58,
+    60,
+    61,
+    81,
+    85,
+    336,
+    618,
+    620,
+    622,
+    646,
+    952,
+    970,
+    971
+  ],
+  "supported_count": 16,
+  "unsupported_count": 255,
+  "classification_basis": "Complete question must fit one existing engine operation; sum/group-by/type inventory/multiple output requirements are unsupported. Scalar min/max/mean and explicit missing data are supported regardless of Development Planner synonyms. Official category number is not used as capability label. No model loaded or system answers viewed.",
+  "scoring": "Expected values copied from official prose only. Numeric tolerance is half the last printed decimal unit. Units normalized by fixed physical conversion table. Missing unit fails. Entity descriptions not objectively bindable are manual_review_required.",
+  "scope_refusal": "Only controlled unsupported status earns safe out-of-scope refusal credit; parser errors, execution errors, entity_not_found and ambiguous do not earn out-of-scope credit. This differs from answering official benchmark questions; report refuse-all baseline and answer-only success separately.",
+  "data_refusal": "For supported question 336, official answer explicitly states area data unavailable; missing/incomplete_data (not generic unsupported) earns credit.",
+  "language_subset": {
+    "method": "Scope-reduced protocol: select at most 10 IDs using random.Random(20260912).sample(sorted(supported_ids), 10); the selected IDs are saved in language_subset.json before language execution.",
+    "size": 10,
+    "translations_frozen_before_any_system_run": true,
+    "selection_based_on_results": false
+  },
+  "manual_review": "Frozen manual cases excluded only from supported-scoreable denominator; retained in total coverage/overall denominator and reported individually. Success with ungraded prose remains unknown, not automatically correct.",
+  "source_files_sha256": {
+    "external_cases.json": "afeef08d836a809220a48bbf1617182e21608058ec2e02d3437497d03d28f9bc",
+    "chinese_external_cases.json": "eef69a89a1ad314398fe4ac1c195d4fb1f0f818f50274cb23b33086df56a4c4b",
+    "mixed_external_cases.json": "453919d4632a07e254b3fa66ad638bc63a8e42dc33bf111fd55932b401f19683"
+  }
+}

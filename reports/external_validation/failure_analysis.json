@@ -1,0 +1,40 @@
+{
+  "scope": "Development Planner failures on the 16 pre-classified supported cases. Unsupported cases were not executed and are only counted by capability category.",
+  "supported_failure_category_counts": {
+    "planner_operation_error": 16
+  },
+  "supported_failure_patterns": {
+    "width_attribute_schema_mismatch": 5,
+    "extremum_phrase_not_planned": 6,
+    "missing_aggregate_attribute_for_extremum": 2,
+    "entity_or_subject_resolution": 3
+  },
+  "representative_supported_cases": [
+    {
+      "benchmark_id": "23",
+      "outcome": "planner_operation_error",
+      "detail": "The model catalog does not expose the Development Planner's simplified width aggregate attribute."
+    },
+    {
+      "benchmark_id": "55",
+      "outcome": "planner_operation_error",
+      "detail": "The phrase 'Which room ... is the largest?' did not produce an existing aggregate plan."
+    },
+    {
+      "benchmark_id": "58",
+      "outcome": "planner_operation_error",
+      "detail": "The planner attempted object resolution for the phrase 'narrowest used here'."
+    }
+  ],
+  "unsupported_capability_category_counts": {
+    "compound_or_grouped_aggregation": 118,
+    "unsupported_entity_or_system": 69,
+    "unsupported_relation_or_collection": 23,
+    "material_system": 20,
+    "geometry_or_spatial_reasoning": 15,
+    "project_metadata": 7,
+    "cost": 2,
+    "construction_sequencing": 1
+  },
+  "no_remediation": "Per frozen held-out protocol, no Planner, Engine, terminology, Drawing Retrieval, or benchmark-ground-truth changes were made after observing these results."
+}

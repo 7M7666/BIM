@@ -121,7 +121,7 @@ def test_incomplete_data_message_is_recorded_in_the_active_locale(
     assert "available for 2 of 3 entities" in session_state["last_error_details"]
 
 
-@pytest.mark.parametrize("code", ("missing", "ambiguous", "unsupported", "entity_not_found"))
+@pytest.mark.parametrize("code", ("missing", "ambiguous", "unsupported", "entity_not_found", "missing_data"))
 @pytest.mark.parametrize("locale", ("zh", "en"))
 def test_resolution_errors_use_locale_and_preserve_candidates(monkeypatch, synthetic_dataset, code, locale):
     from bim_evidence_qa.domain import ResolutionError
@@ -131,11 +131,32 @@ def test_resolution_errors_use_locale_and_preserve_candidates(monkeypatch, synth
         raise ResolutionError(code, "Internal English diagnostic", ("Qto_Test.Area [#123]",))
     monkeypatch.setattr(web, "run_question", fail)
     web._submit_question(locale, synthetic_dataset, object(), "面积？")
-    assert state["chat_history"][0]["answer"] == UI_TEXT[locale][code]
+    expected_key = "unsupported_query" if code == "unsupported" else code
+    assert state["chat_history"][0]["answer"] == UI_TEXT[locale][expected_key]
+    assert state["chat_history"][0]["error_key"] == expected_key
     assert state["last_resolution_error"]["candidates"] == ["Qto_Test.Area [#123]"]
 
 
-def test_missing_storey_data_uses_the_explicit_chinese_ifc_status(monkeypatch):
+@pytest.mark.parametrize("locale", ("zh", "en"))
+def test_unsupported_query_uses_specific_prototype_message(monkeypatch, synthetic_dataset, locale):
+    from bim_evidence_qa.domain import UnsupportedQueryError
+
+    state = {"chat_history": []}
+    monkeypatch.setattr(web.st, "session_state", state)
+    monkeypatch.setattr(
+        web,
+        "run_question",
+        lambda *_args: (_ for _ in ()).throw(UnsupportedQueryError("Relationship query")),
+    )
+
+    web._submit_question(locale, synthetic_dataset, object(), "五块楼板都在哪里？")
+
+    assert state["chat_history"][0]["answer"] == UI_TEXT[locale]["unsupported_query"]
+    assert "project data" not in state["chat_history"][0]["answer"].casefold()
+
+
+@pytest.mark.parametrize("locale", ("zh", "en"))
+def test_missing_storey_data_uses_the_explicit_ifc_status(monkeypatch, locale):
     from bim_evidence_qa.domain import BuildingDataset, BuildingEntity
     from bim_evidence_qa.query import DevelopmentNaturalLanguagePlanner
 
@@ -143,9 +164,9 @@ def test_missing_storey_data_uses_the_explicit_chinese_ifc_status(monkeypatch):
     monkeypatch.setattr(web.st, "session_state", state)
     dataset = BuildingDataset((BuildingEntity("beam-1", "beam"),))
 
-    web._submit_question("zh", dataset, DevelopmentNaturalLanguagePlanner(), "有几层楼？")
+    web._submit_question(locale, dataset, DevelopmentNaturalLanguagePlanner(), "有几层楼？")
 
-    assert state["chat_history"][0]["answer"] == UI_TEXT["zh"]["missing_storey_data"]
+    assert state["chat_history"][0]["answer"] == UI_TEXT[locale]["missing_storey_data"]
     assert state["last_resolution_error"]["code"] == "missing_storey_data"
 
 

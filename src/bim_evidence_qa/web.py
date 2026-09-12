@@ -54,8 +54,8 @@ UI_TEXT = {
         "missing": "该对象的 IFC 数据中没有找到这个属性。",
         "entity_not_found": "没有找到对应的 BIM 对象。",
         "ambiguous": "存在多个可能匹配的对象或字段，无法唯一确定。请选择下方具体候选。",
-        "unsupported": "当前项目数据无法可靠回答这个问题。",
-        "missing_data": "已理解该问题，但当前 IFC 数据缺少回答所需的信息。",
+        "unsupported": "当前版本暂不支持这种查询。",
+        "missing_data": "已理解这个问题，但当前 IFC 中缺少回答所需的可验证数据。",
         "understood_but_unavailable": "已理解该问题，但当前项目中没有对应的可用 IFC 数据。",
         "missing_storey_data": "当前 IFC 模型中没有 IfcBuildingStorey 楼层实体，因此无法从空间层级确定建筑楼层数。",
         "manual_drawings": "手动浏览图纸",
@@ -106,8 +106,8 @@ UI_TEXT = {
         "question_placeholder": "输入关于当前建筑的问题...",
         "send": "发送",
         "thinking": "正在处理...",
-        "unsupported_query": "当前项目数据无法回答这个问题。",
-        "incomplete_data": "由于部分必要数据缺失，当前无法可靠回答这个问题。",
+        "unsupported_query": "当前版本暂不支持这种查询。",
+        "incomplete_data": "已理解这个问题，但当前 IFC 中缺少回答所需的可验证数据。",
         "no_project": "请上传项目文件或启用开发模式后开始提问。",
         "ready_to_ask": "项目已就绪，请输入一个建筑问题。",
         "llm_key_missing": "尚未配置 LLM API Key。请配置云端 Secrets，或切换到开发规划器。",
@@ -153,8 +153,8 @@ UI_TEXT = {
         "missing": "The property was not found in this object’s IFC data.",
         "entity_not_found": "No matching BIM object was found.",
         "ambiguous": "Multiple objects or fields match. Please choose a specific candidate below.",
-        "unsupported": "The current project data cannot reliably answer this question.",
-        "missing_data": "The question is understood, but the IFC data needed to answer it is missing.",
+        "unsupported": "This query type is not supported by the current prototype.",
+        "missing_data": "The question is understood, but verifiable IFC data needed to answer it is missing.",
         "understood_but_unavailable": "The question is understood, but this project has no corresponding IFC data available.",
         "missing_storey_data": "This IFC model has no IfcBuildingStorey entities, so its storey count cannot be determined from spatial hierarchy.",
         "manual_drawings": "Browse drawings manually",
@@ -205,8 +205,8 @@ UI_TEXT = {
         "question_placeholder": "Ask about the current building...",
         "send": "Send",
         "thinking": "Processing...",
-        "unsupported_query": "This query cannot be answered with the currently available project data.",
-        "incomplete_data": "The query cannot be answered reliably because some required data is missing.",
+        "unsupported_query": "This query type is not supported by the current prototype.",
+        "incomplete_data": "The question is understood, but verifiable IFC data needed to answer it is missing.",
         "no_project": "Upload a project or enable development mode to start asking questions.",
         "ready_to_ask": "The project is ready. Ask a question about the building.",
         "llm_key_missing": "The LLM API key is not configured. Add Cloud Secrets or use the development planner.",
@@ -639,8 +639,9 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
     try:
         outcome = run_question(dataset, question, planner)
     except ResolutionError as error:
-        _record_error(question, _text(locale, error.code if error.code in UI_TEXT[locale] else "unsupported"), str(error))
-        st.session_state["chat_history"][-1]["error_key"] = error.code if error.code in UI_TEXT[locale] else "unsupported"
+        error_key = _error_message_key(error.code)
+        _record_error(question, _text(locale, error_key), str(error))
+        st.session_state["chat_history"][-1]["error_key"] = error_key
         payload = error.as_dict()
         rows = []
         for candidate in error.candidates:
@@ -658,6 +659,7 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
             _text(locale, "unsupported_query"),
             str(error),
         )
+        st.session_state["chat_history"][-1]["error_key"] = "unsupported_query"
         st.session_state["last_resolution_error"] = (
             error.as_dict() if isinstance(error, UnsupportedQueryError) else
             {"code": "unsupported", "message": str(error), "candidates": []}
@@ -675,8 +677,8 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
             str(error),
         )
     except QueryExecutionError as error:
-        _record_error(question, _text(locale, "unsupported"), str(error))
-        st.session_state["chat_history"][-1]["error_key"] = "unsupported"
+        _record_error(question, _text(locale, "unsupported_query"), str(error))
+        st.session_state["chat_history"][-1]["error_key"] = "unsupported_query"
     else:
         st.session_state.pop("last_resolution_error", None)
         st.session_state["last_outcome"] = outcome
@@ -702,6 +704,12 @@ def _record_error(question: str, message: str, details: str) -> None:
             "status": "error",
         }
     )
+
+
+def _error_message_key(code: str) -> str:
+    if code == "unsupported":
+        return "unsupported_query"
+    return code if code in UI_TEXT["zh"] else "unsupported_query"
 
 
 def _render_chat_turn(item: dict, locale: str) -> None:
@@ -756,7 +764,7 @@ def _render_ifc_evidence(
     with st.container(key="ifc_evidence_scroll"):
         if not isinstance(outcome, ApplicationQueryResult) or not outcome.answer.evidence:
             if error := st.session_state.get("last_resolution_error"):
-                st.error(_text(locale, error["code"] if error["code"] in UI_TEXT[locale] else "unsupported"))
+                st.error(_text(locale, _error_message_key(error["code"])))
                 if error["candidates"]:
                     if error.get("evidence_rows"):
                         labels = {"Name": "名称", "Source": "证据来源", "Set": "属性 / 工程量集", "Field": "字段", "Value": "数值", "Unit": "单位"} if locale == "zh" else {}

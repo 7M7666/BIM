@@ -88,6 +88,9 @@ class AnswerBuilder:
             )
             return "ok", f"Project overview: {summary}."
 
+        if plan.operation is QueryOperation.LOCATION:
+            return "ok", self._location_text(plan, result, "en")
+
         if plan.operation is QueryOperation.FIND:
             if not result.entities:
                 return "not_found", "No matching entities were found."
@@ -166,6 +169,8 @@ class AnswerBuilder:
                 for kind, count in result.overview_counts.items()
             )
             return "ok", f"项目概览：{summary}。"
+        if plan.operation is QueryOperation.LOCATION:
+            return "ok", self._location_text(plan, result, "zh")
         if plan.operation in (QueryOperation.FIND, QueryOperation.FILTER):
             if not result.entities:
                 return "not_found", "没有找到对应的 BIM 对象。"
@@ -177,3 +182,31 @@ class AnswerBuilder:
             function = {AggregateFunction.AVERAGE: "平均值", AggregateFunction.MAX: "最大值", AggregateFunction.MIN: "最小值"}[plan.aggregate_function]
             return "ok", f"{plan.aggregate_field} 的{function}为 {result.value}。"
         raise ValueError(f"Unsupported query operation: {plan.operation}")
+
+    @staticmethod
+    def _location_text(plan: QueryPlan, result: QueryResult, locale: str) -> str:
+        groups: dict[tuple[str, str], int] = {}
+        for location in result.locations.values():
+            key = (location.source, location.level)
+            groups[key] = groups.get(key, 0) + 1
+        kind = plan.kind or "entity"
+        if locale == "zh":
+            labels = {"slab": "楼板", "door": "门", "window": "窗", "wall": "墙", "beam": "梁", "column": "柱", "footing": "基础", "pile": "桩", "space": "房间"}
+            parts = [
+                (
+                    f"{count} 个{labels.get(kind, '对象')}按 IfcBuildingStorey 空间包含关系位于 {level}"
+                    if source == "spatial_containment"
+                    else f"{count} 个{labels.get(kind, '对象')}的属性 Reference Level 为 {level}（不是 IfcBuildingStorey 空间包含关系）"
+                )
+                for (source, level), count in sorted(groups.items())
+            ]
+            return "；".join(parts) + "。"
+        parts = [
+            (
+                f"{count} {kind}(s) are spatially contained in IfcBuildingStorey '{level}'"
+                if source == "spatial_containment"
+                else f"{count} {kind}(s) have property-based Reference Level '{level}' (not IfcBuildingStorey containment)"
+            )
+            for (source, level), count in sorted(groups.items())
+        ]
+        return "; ".join(parts) + "."

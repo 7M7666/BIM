@@ -10,6 +10,7 @@ from bim_evidence_qa.domain import (
     BuildingEntity,
     FilterCondition,
     FilterOperator,
+    LocationValue,
     QueryOperation,
     QueryPlan,
     QueryResult,
@@ -75,6 +76,39 @@ class QueryEngine:
                 operation=plan.operation,
                 entities=(),
                 overview_counts={kind: count for kind, count in counts.items() if count > 0},
+            )
+
+        if plan.operation is QueryOperation.LOCATION:
+            entities = self._select(plan, dataset)
+            storeys_by_id = {
+                entity.entity_id: entity.name
+                for entity in dataset.entities
+                if entity.kind == "storey" and entity.name is not None
+            }
+            locations = {}
+            missing_entity_ids = []
+            for entity in entities:
+                if entity.container_id in storeys_by_id:
+                    locations[entity.entity_id] = LocationValue(
+                        "spatial_containment", storeys_by_id[entity.container_id]
+                    )
+                elif isinstance(
+                    reference_level := entity.attributes.get(REFERENCE_LEVEL_FIELD), str
+                ) and reference_level.strip():
+                    locations[entity.entity_id] = LocationValue(
+                        "reference_level", reference_level
+                    )
+                else:
+                    missing_entity_ids.append(entity.entity_id)
+            if missing_entity_ids:
+                raise ResolutionError(
+                    "missing_data",
+                    "Level data is unavailable for: " + ", ".join(missing_entity_ids),
+                )
+            return QueryResult(
+                operation=plan.operation,
+                entities=entities,
+                locations=locations,
             )
 
         entities = self._select(plan, dataset)

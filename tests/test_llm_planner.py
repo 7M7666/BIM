@@ -196,3 +196,13 @@ def test_llm_settings_read_key_endpoint_and_model_from_environment():
     assert settings.api_key == "test-key"
     assert settings.endpoint.endswith("/chat/completions")
     assert settings.model == "test-model"
+
+
+def test_llm_planner_accepts_catalog_validated_location_plan(catalog):
+    provider = FakeProvider(json.dumps({"operation": "location", "kind": "space"}))
+
+    plan = LLMQueryPlanner(provider).plan("Which level contains the spaces?", catalog)
+
+    assert plan.operation is QueryOperation.LOCATION
+    assert plan.kind == "space"
+    assert "operation location" in provider.system_prompt

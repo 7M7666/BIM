@@ -113,7 +113,9 @@ class LLMQueryPlanner:
             "For an explicitly requested Reference Level use field reference_level, "
             "operator eq, and its name. This is a property-based level, never spatial "
             "IfcBuildingStorey containment. Do not substitute it for on/in a storey. "
-            "Relationship questions such as which storey contains an object are unsupported. "
+            "For questions asking which level contains or an entity belongs to, use operation location "
+            "with the canonical entity kind and no filters. The engine reports either spatial "
+            "IfcBuildingStorey containment or an explicit Reference Level property. "
             "For a single object property use operation find, canonical kind, object_ref "
             "(exact name, GlobalId or exported element ID), and requested_property. "
             "requested_property must be length, width, height, area, volume, properties, "
@@ -358,6 +360,13 @@ class LLMQueryPlanner:
             if aggregate_function is not None or aggregate_field is not None:
                 raise InvalidPlannerOutputError(
                     "Overview queries cannot include aggregate fields."
+                )
+            return
+        if operation is QueryOperation.LOCATION:
+            if (kind is None or name is not None or filters or
+                    aggregate_function is not None or aggregate_field is not None):
+                raise InvalidPlannerOutputError(
+                    "Location queries require a kind and cannot include names, filters or aggregate fields."
                 )
             return
         if operation is QueryOperation.FILTER and (kind is None or not filters):

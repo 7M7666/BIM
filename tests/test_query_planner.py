@@ -9,6 +9,8 @@ from bim_evidence_qa.domain import (
     AggregateFunction,
     BuildingDataset,
     BuildingEntity,
+    FilterCondition,
+    FilterOperator,
     QueryOperation,
     QueryPlan,
     ResolutionError,
@@ -255,3 +257,102 @@ def test_natural_language_max_query_preserves_dataset_fact_and_global_id(
     assert result.value == 30.0
     assert [entity.name for entity in result.entities] == ["Room 202"]
     assert result.entities[0].global_id == "SYNTHETIC-SPACE-202"
+
+
+def _hardening_dataset():
+    return BuildingDataset(
+        entities=(
+            BuildingEntity("rac-storey", "storey", name="Level 1"),
+            BuildingEntity("rac-slab", "slab", name="Slab:100001", container_id="rac-storey"),
+            BuildingEntity("wall-1", "wall", attributes={"height": 3.0}),
+            BuildingEntity("wall-2", "wall", attributes={"height": 4.0}),
+            BuildingEntity("footing-1", "footing", name="Footing:200001"),
+            BuildingEntity("beam-1046268", "beam", name="Beam:1046268", attributes={"length": 6.0}),
+            BuildingEntity("beam-2", "beam", attributes={"length": 4.0}),
+            BuildingEntity("space-1", "space", attributes={"area": 20.0}),
+            BuildingEntity("space-2", "space", attributes={"area": 30.0}),
+        )
+    )
+
+
+def test_semantic_equivalence_uses_canonical_plans_across_languages():
+    planner = DevelopmentNaturalLanguagePlanner()
+    catalog = QueryCatalog.from_dataset(_hardening_dataset())
+
+    equivalents = {
+        QueryPlan(QueryOperation.OVERVIEW): (
+            "这个建筑有什么", "模型里都包含什么", "Give me an overview of this model",
+        ),
+        QueryPlan(QueryOperation.COUNT, kind="wall"): (
+            "有多少墙", "几面墙", "How many walls are there",
+        ),
+        QueryPlan(QueryOperation.FIND, kind="footing"): (
+            "有哪些基础", "四个基础是什么", "List the footings",
+        ),
+        QueryPlan(QueryOperation.LOCATION, kind="slab"): (
+            "楼板在哪层", "这些 slabs belong to which level", "Which level contains the slabs",
+        ),
+    }
+
+    for expected, questions in equivalents.items():
+        assert [planner.plan(question, catalog) for question in questions] == [expected] * len(questions)
+
+
+def test_filter_and_aggregate_synonyms_use_existing_engine_fields():
+    planner = DevelopmentNaturalLanguagePlanner()
+    catalog = QueryCatalog.from_dataset(_hardening_dataset())
+
+    expected_filter = QueryPlan(
+        QueryOperation.FILTER, kind="space",
+        filters=(FilterCondition("area", FilterOperator.GT, 20),),
+    )
+    assert [planner.plan(question, catalog) for question in (
+        "面积大于 20 的房间", "rooms with area > 20", "空间 area > 20",
+    )] == [expected_filter] * 3
+
+    expected_aggregate = QueryPlan(
+        QueryOperation.AGGREGATE, kind="beam",
+        aggregate_function=AggregateFunction.MAX, aggregate_field="length",
+    )
+    assert [planner.plan(question, catalog) for question in (
+        "最长的梁", "Which beam is longest", "beam max length",
+    )] == [expected_aggregate] * 3
+
+
+def test_quantity_is_not_an_element_number_but_explicit_ids_are_find_queries():
+    planner = DevelopmentNaturalLanguagePlanner()
+    catalog = QueryCatalog.from_dataset(_hardening_dataset())
+
+    assert planner.plan("四个基础是什么", catalog) == QueryPlan(QueryOperation.FIND, kind="footing")
+    assert planner.plan("Find element number 1046268", catalog) == QueryPlan(
+        QueryOperation.FIND, kind="beam",
+        filters=(FilterCondition("entity_id", FilterOperator.EQ, "beam-1046268"),),
+    )
+
+
+def test_level_location_distinguishes_spatial_containment_and_reference_level():
+    planner = DevelopmentNaturalLanguagePlanner()
+    rac = BuildingDataset((
+        BuildingEntity("rac-storey", "storey", name="Level 1"),
+        BuildingEntity("rac-slab", "slab", container_id="rac-storey"),
+    ))
+    rst = BuildingDataset((
+        BuildingEntity("rst-beam", "beam", attributes={"Constraints.Reference Level": "Level 2"}),
+        BuildingEntity("rst-slab", "slab"),
+    ))
+
+    rac_result = QueryEngine().execute(
+        planner.plan("楼板在哪层", QueryCatalog.from_dataset(rac)), rac,
+    )
+    assert rac_result.locations["rac-slab"].source == "spatial_containment"
+    assert rac_result.locations["rac-slab"].level == "Level 1"
+
+    rst_result = QueryEngine().execute(
+        planner.plan("Which level contains the beams", QueryCatalog.from_dataset(rst)), rst,
+    )
+    assert rst_result.locations["rst-beam"].source == "reference_level"
+    assert rst_result.locations["rst-beam"].level == "Level 2"
+
+    with pytest.raises(ResolutionError) as error:
+        QueryEngine().execute(planner.plan("楼板在哪层", QueryCatalog.from_dataset(rst)), rst)
+    assert error.value.code == "missing_data"

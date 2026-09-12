@@ -18,7 +18,27 @@ PROPERTY_ALIASES = {
 OPERATION_ALIASES = {
     "平均值": "average", "平均": "average", "最大的": "max", "最大": "max",
     "最小的": "min", "最小": "min", "显示所有": "list", "列出": "list",
-    "哪些": "list", "多少": "count", "数量": "count", "有几": "count",
+    "哪些": "list", "什么": "list", "多少": "count", "几层": "count storey", "多少层": "count storey", "数量": "count", "有几": "count",
+    "几个": "count", "几扇": "count", "几面": "count", "几根": "count", "几块": "count",
+    "几层楼": "count storey", "多少层楼": "count storey",
+    "多少楼层": "count storey",
+}
+COMPARATIVE_ALIASES = {
+    "最长": "max length", "最短": "min length", "最宽": "max width",
+    "最窄": "min width", "最高": "max height", "最低": "min height",
+}
+LOCATION_ALIASES = {
+    "在哪层": "location", "属于哪层": "location", "位于哪层": "location",
+    "第几层": "location", "哪个楼层": "location",
+}
+COMPARISON_ALIASES = {
+    "大于等于": ">=", "小于等于": "<=", "不少于": ">=", "不超过": "<=",
+    "大于": ">", "小于": "<", "超过": ">", "低于": "<",
+}
+ENGLISH_INTENT_ALIASES = {
+    "longest": "max length", "shortest": "min length", "widest": "max width",
+    "narrowest": "min width", "tallest": "max height", "highest": "max height",
+    "lowest": "min height", "wide": "width", "long": "length", "high": "height",
 }
 OVERVIEW_ALIASES = {
     "有什么": "overview", "包含": "overview",
@@ -47,8 +67,7 @@ def normalize_question(question: str, names=()) -> str:
             question = re.sub(pattern, lambda _: token, question, flags=re.I)
             protected[token] = name
     question = question.translate(str.maketrans({"？": "?", "。": ".", "：": ":", "＝": "="}))
-    if re.fullmatch(r"\s*(?:(?:这个|这栋|该)?建筑)?(?:有)?(?:几层(?:楼)?|多少层(?:楼)?|多少楼层|多少楼)[?.!]?\s*", question):
-        return "count storey"
+    question = re.sub(r"多少楼(?![板层])", " count storey ", question)
     question = question.replace("参考楼层", " Reference Level ")
     question = re.sub(r"第?([一二12])层", lambda m: " Level " + {"一": "1", "二": "2"}.get(m[1], m[1]) + " ", question)
     reference = re.search(r"\breference\s+level\s*(?:=|为|是|is)?\s*(Level\s+\d+)\b", question, re.I)
@@ -62,10 +81,15 @@ def normalize_question(question: str, names=()) -> str:
         question = question[match.end():]
     for alias, canonical in IFC_KINDS.items():
         question = re.sub(r"(?<![A-Za-z0-9_])" + alias + r"(?![A-Za-z0-9_])", canonical, question, flags=re.I)
+    for alias, canonical in ENGLISH_INTENT_ALIASES.items():
+        question = re.sub(r"(?<![A-Za-z0-9_])" + alias + r"(?![A-Za-z0-9_])", canonical, question, flags=re.I)
     aliases = {
         **ENTITY_ALIASES,
         **PROPERTY_ALIASES,
         **OPERATION_ALIASES,
+        **COMPARATIVE_ALIASES,
+        **LOCATION_ALIASES,
+        **COMPARISON_ALIASES,
         **OVERVIEW_ALIASES,
     }
     pattern = "|".join(map(re.escape, sorted(aliases, key=len, reverse=True)))
@@ -108,3 +132,14 @@ def is_overview_intent(question: str) -> bool:
         or ({"kind", "kinds"} & tokens and {"element", "elements", "component", "components"} & tokens)
     )
     return has_implicit_current_model or "overview" in tokens or has_english_overview_cue
+
+
+def is_location_intent(question: str) -> bool:
+    """Recognize requests for an entity's available spatial or Reference Level data."""
+
+    tokens = set(re.findall(r"[a-z0-9_-]+", question.casefold()))
+    return "location" in tokens or bool(
+        tokens & {"where", "belong", "belongs"}
+        or ("which" in tokens and "level" in tokens)
+        or ("contains" in tokens and "level" in tokens)
+    )

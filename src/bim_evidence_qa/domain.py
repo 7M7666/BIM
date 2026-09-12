@@ -76,6 +76,7 @@ class QueryOperation(str, Enum):
     FILTER = "filter"
     AGGREGATE = "aggregate"
     OVERVIEW = "overview"
+    LOCATION = "location"
 
 
 class FilterOperator(str, Enum):
@@ -98,6 +99,12 @@ class FilterCondition:
     field: str
     operator: FilterOperator
     value: ScalarValue
+
+
+@dataclass(frozen=True, slots=True)
+class LocationValue:
+    source: str
+    level: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,3 +146,4 @@ class QueryResult:
     diagnostics: tuple[str, ...] = ()
     properties: tuple[PropertyValue, ...] = ()
     overview_counts: Mapping[str, int] = field(default_factory=dict)
+    locations: Mapping[str, LocationValue] = field(default_factory=dict)

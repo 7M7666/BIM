@@ -78,6 +78,11 @@ def test_app_defaults_to_chinese_llm_planner_without_runtime_errors():
     )
 
     assert not list(app.exception)
+    assert app.toggle(key="development_mode").value is False
+    assert len(app.button_group) == 1
+    assert not app.checkbox
+    assert [tab.label for tab in app.tabs] == ["IFC证据", "图纸证据"]
+    app.toggle(key="development_mode").set_value(True).run()
     assert app.button_group[1].value == UI_TEXT["zh"]["llm_planner"]
     assert app.checkbox[0].value is False
     assert app.text_input[0].disabled is True
@@ -112,3 +117,61 @@ def test_incomplete_data_message_is_recorded_in_the_active_locale(
         }
     ]
     assert "available for 2 of 3 entities" in session_state["last_error_details"]
+
+
+@pytest.mark.parametrize("code", ("missing", "ambiguous", "unsupported", "entity_not_found"))
+@pytest.mark.parametrize("locale", ("zh", "en"))
+def test_resolution_errors_use_locale_and_preserve_candidates(monkeypatch, synthetic_dataset, code, locale):
+    from bim_evidence_qa.domain import ResolutionError
+    state = {"chat_history": []}
+    monkeypatch.setattr(web.st, "session_state", state)
+    def fail(*args):
+        raise ResolutionError(code, "Internal English diagnostic", ("Qto_Test.Area [#123]",))
+    monkeypatch.setattr(web, "run_question", fail)
+    web._submit_question(locale, synthetic_dataset, object(), "面积？")
+    assert state["chat_history"][0]["answer"] == UI_TEXT[locale][code]
+    assert state["last_resolution_error"]["candidates"] == ["Qto_Test.Area [#123]"]
+
+
+def test_developer_toggle_preserves_debug_information_and_language_switch():
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app.toggle(key="development_mode").set_value(True).run()
+    app.checkbox(key="use_synthetic").check().run()
+    app.button_group(key="planner_mode_control_zh").set_value("开发规划器").run()
+    app.text_input[0].set_value("How many rooms are there?")
+    app.button[0].click().run()
+    assert not app.exception
+    assert len(app.json) == 2
+    app.toggle(key="development_mode").set_value(False).run()
+    assert not app.json
+    assert len(app.tabs) == 2
+    assert not app.checkbox
+    assert "这个建筑共有 5 个房间。" in " ".join(x.value for x in app.markdown)
+    app.button_group(key="ui_language").set_value("EN").run()
+    assert "There are 5 spaces." in " ".join(x.value for x in app.markdown)
+    app.toggle(key="development_mode").set_value(True).run()
+    assert len(app.json) == 2
+    assert app.button_group(key="planner_mode_control_en").value == "Development Planner"
+
+
+def test_unmatched_pdf_is_only_in_collapsed_manual_browser():
+    app = AppTest.from_string("""
+import fitz
+import streamlit as st
+from bim_evidence_qa.web import _render_drawing_panel
+from bim_evidence_qa.parsers.pdf import PyMuPDFParser
+from bim_evidence_qa.drawing import DrawingRetrieval
+pdf = fitz.open()
+pdf.new_page()
+doc = PyMuPDFParser().parse_bytes(pdf.tobytes(), file_name="manual.pdf")
+st.session_state['chat_history'] = [{'question': 'test'}]
+st.session_state['drawing_retrieval'] = DrawingRetrieval((), 'No reliable drawing evidence found.')
+_render_drawing_panel('zh', (doc,))
+""").run()
+    assert not app.exception
+    assert not app.json
+    manual = next(e for e in app.expander if e.label == "手动浏览图纸")
+    assert manual.proto.expanded is False
+    assert len(manual.get("image")) == len(app.get("image")) == 1
+    assert any("未找到可靠" in c.value for c in app.caption)
+    assert any("未建立证据关联" in c.value for c in manual.caption)

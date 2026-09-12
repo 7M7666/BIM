@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 
 from bim_evidence_qa.domain import (
@@ -29,7 +30,7 @@ class Answer:
 
 
 class AnswerBuilder:
-    def build(self, plan: QueryPlan, result: QueryResult) -> Answer:
+    def build(self, plan: QueryPlan, result: QueryResult, locale: str = "en") -> Answer:
         if plan.operation is not result.operation:
             raise ValueError("QueryPlan and QueryResult operations do not match.")
 
@@ -49,9 +50,9 @@ class AnswerBuilder:
             if item.global_id is None
         )
 
-        status, text = self._answer_text(plan, result)
+        status, text = self._chinese_text(plan, result) if locale == "zh" else self._answer_text(plan, result)
         if result.diagnostics:
-            text = " ".join((text, *result.diagnostics))
+            text = " ".join((text, *(self._diagnostic_zh(d) if locale == "zh" else d for d in result.diagnostics)))
         return Answer(
             status=status,
             text=text,
@@ -113,4 +114,41 @@ class AnswerBuilder:
                 f"The {function} {kind} {plan.aggregate_field} is {result.value}.",
             )
 
+        raise ValueError(f"Unsupported query operation: {plan.operation}")
+
+    @staticmethod
+    def _diagnostic_zh(message: str) -> str:
+        if message.startswith("Property-based level:"):
+            value = message.split("'", 2)[1]
+            return f"按属性 Reference Level = {value} 筛选；这不是 IfcBuildingStorey 空间包含关系。"
+        if message.startswith("Spatial containment:"):
+            value = message.split("'", 2)[1]
+            return f"按 IfcBuildingStorey 的实际空间包含关系筛选：{value}。"
+        match = re.fullmatch(r"Showing (\d+) of (\d+) scalar properties; quantities first\.", message)
+        if match:
+            return f"共 {match[2]} 个属性，展示其中 {match[1]} 个，优先展示 Quantity。"
+        return "部分数据说明请在开发模式查看。"
+
+    def _chinese_text(self, plan: QueryPlan, result: QueryResult) -> tuple[str, str]:
+        kinds = {"wall": "面墙", "door": "扇门", "window": "扇窗", "storey": "层楼", "space": "个房间", "beam": "根梁", "column": "根柱", "slab": "块楼板", "footing": "个基础", "pile": "根桩"}
+        if plan.requested_property is not None:
+            entity = result.entities[0]
+            name = entity.name or entity.global_id or "该对象"
+            if plan.requested_property == "properties":
+                return "ok", f"已列出 {name} 的 {len(result.properties)} 个属性。"
+            prop = result.properties[0]
+            field = {"length": "长度", "width": "宽度", "height": "高度", "area": "面积", "volume": "体积"}.get(plan.requested_property, prop.path)
+            return "ok", f"{name} 的{field}为 {prop.value} {prop.unit or '（单位不可用）'}。"
+        if plan.operation is QueryOperation.COUNT:
+            return "ok", f"{'符合条件的对象' if plan.filters else '这个建筑'}共有 {result.value} {kinds.get(plan.kind, '个对象')}。"
+        if plan.operation in (QueryOperation.FIND, QueryOperation.FILTER):
+            if not result.entities:
+                return "not_found", "没有找到对应的 BIM 对象。"
+            if len(result.entities) == 1:
+                entity = result.entities[0]
+                return "ok", f"已找到 {entity.name or entity.global_id or '对应对象'}。"
+            return "ok", f"共找到 {len(result.entities)} 个符合条件的对象。"
+        if plan.operation is QueryOperation.AGGREGATE:
+            function = {AggregateFunction.AVERAGE: "平均值", AggregateFunction.MAX: "最大值", AggregateFunction.MIN: "最小值"}[plan.aggregate_function]
+            return "ok", f"{plan.aggregate_field} 的{function}为 {result.value}。"
         raise ValueError(f"Unsupported query operation: {plan.operation}")

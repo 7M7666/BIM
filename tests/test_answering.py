@@ -108,3 +108,35 @@ def test_full_question_to_grounded_answer_pipeline(synthetic_dataset):
     assert answer.evidence[0].name == "Room 202"
     assert answer.evidence[0].global_id == result.entities[0].global_id
     assert answer.evidence[0].global_id == "SYNTHETIC-SPACE-202"
+
+
+def test_bilingual_answers_preserve_values_and_provenance(synthetic_dataset):
+    for question in ("How many rooms are there?", "Find Room 101", "Which room has the largest area?", "What is the average room area?"):
+        plan, result, english = _run_question(question, synthetic_dataset)
+        chinese = AnswerBuilder().build(plan, result, "zh")
+        assert chinese.value == english.value
+        assert chinese.evidence == english.evidence
+        assert chinese.text != english.text
+        assert any("\u4e00" <= c <= "\u9fff" for c in chinese.text)
+
+
+def test_chinese_wall_and_door_templates():
+    for kind, value, text in (("wall", 47, "这个建筑共有 47 面墙。"), ("door", 16, "这个建筑共有 16 扇门。")):
+        plan = QueryPlan(QueryOperation.COUNT, kind=kind)
+        result = QueryResult(QueryOperation.COUNT, (), value)
+        assert AnswerBuilder().build(plan, result, "zh").text == text
+
+
+def test_chinese_property_value_and_reference_level_diagnostic():
+    from bim_evidence_qa.domain import PropertySource, PropertyValue
+    prop = PropertyValue(PropertySource.QUANTITY, "Qto_BeamBaseQuantities", "Length", 4242.6, unit="mm")
+    entity = BuildingEntity("internal-id", "beam", "Beam:1046268", "GLOBAL", properties=(prop,))
+    plan = QueryPlan(QueryOperation.FIND, kind="beam", requested_property="length")
+    result = QueryResult(QueryOperation.FIND, (entity,), 4242.6, ("Property-based level: Constraints.Reference Level eq 'Level 2'. This is not IfcBuildingStorey containment.",), (prop,))
+    zh = AnswerBuilder().build(plan, result, "zh")
+    en = AnswerBuilder().build(plan, result, "en")
+    assert "长度为 4242.6 mm" in zh.text
+    assert "按属性 Reference Level = Level 2" in zh.text
+    assert "不是 IfcBuildingStorey" in zh.text
+    assert zh.value == en.value and zh.evidence == en.evidence
+    assert "4242.6 mm" in en.text

@@ -37,6 +37,8 @@ def normalize_question(question: str, names=()) -> str:
             question = re.sub(pattern, lambda _: token, question, flags=re.I)
             protected[token] = name
     question = question.translate(str.maketrans({"？": "?", "。": ".", "：": ":", "＝": "="}))
+    if re.fullmatch(r"\s*(?:(?:这个|这栋|该)?建筑)?(?:有)?(?:几层(?:楼)?|多少层(?:楼)?|多少楼层|多少楼)[?.!]?\s*", question):
+        return "count storey"
     question = question.replace("参考楼层", " Reference Level ")
     question = re.sub(r"第?([一二12])层", lambda m: " Level " + {"一": "1", "二": "2"}.get(m[1], m[1]) + " ", question)
     reference = re.search(r"\breference\s+level\s*(?:=|为|是|is)?\s*(Level\s+\d+)\b", question, re.I)

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from bim_evidence_qa.answering import AnswerBuilder
 from bim_evidence_qa.application import ApplicationQueryResult, run_question
 from bim_evidence_qa.domain import BuildingDataset, QueryPlan, ResolutionError
 from bim_evidence_qa.drawing import retrieve_drawings
@@ -44,6 +45,27 @@ SYNTHETIC_FIXTURE = (
 
 UI_TEXT = {
     "zh": {
+        "development_mode": "开发模式",
+        "missing": "该对象的 IFC 数据中没有找到这个属性。",
+        "entity_not_found": "没有找到对应的 BIM 对象。",
+        "ambiguous": "存在多个可能匹配的对象或字段，无法唯一确定。请选择下方具体候选。",
+        "unsupported": "当前项目数据无法可靠回答这个问题。",
+        "manual_drawings": "手动浏览图纸",
+        "manual_note": "手动浏览内容与当前答案未建立证据关联。",
+        "no_reliable_drawing": "未找到可靠的对应图纸证据。",
+        "ifc_answer_source": "当前回答仍来自 IFC 模型数据。",
+        "related_drawing": "相关图纸证据",
+        "match_details": "查看匹配详情",
+        "match_basis": "匹配依据",
+        "source": "证据来源",
+        "set": "属性 / 工程量集",
+        "field": "字段",
+        "value": "数值",
+        "unit": "单位",
+        "unit_unavailable": "单位不可用",
+        "unnamed": "未命名对象",
+        "candidate": "候选对象或字段",
+
         "development_preview": "开发预览",
         "course_data_not_loaded": "尚未加载课程数据",
         "project": "项目",
@@ -53,7 +75,7 @@ UI_TEXT = {
         "upload_model": "上传 IFC",
         "choose_file": "选择文件",
         "files": "文件",
-        "model_summary": "模型概览",
+        "model_summary": "模型概况",
         "storeys": "楼层",
         "spaces": "房间",
         "doors": "门",
@@ -84,8 +106,8 @@ UI_TEXT = {
         "llm_config_incomplete": "LLM 配置不完整。",
         "llm_request_failed": "LLM 规划器暂时无法返回查询计划。",
         "ifc_evidence": "IFC证据",
-        "drawing_evidence": "图纸",
-        "query_details": "查询",
+        "drawing_evidence": "图纸证据",
+        "query_details": "查询详情",
         "global_id": "GlobalId",
         "entity_type": "类型",
         "no_ifc_evidence": "暂无 IFC 证据",
@@ -115,6 +137,27 @@ UI_TEXT = {
         "missing_container_many": "{count} 个{kind}缺少空间容器",
     },
     "en": {
+        "development_mode": "Developer mode",
+        "missing": "The property was not found in this object’s IFC data.",
+        "entity_not_found": "No matching BIM object was found.",
+        "ambiguous": "Multiple objects or fields match. Please choose a specific candidate below.",
+        "unsupported": "The current project data cannot reliably answer this question.",
+        "manual_drawings": "Browse drawings manually",
+        "manual_note": "Manual browsing is not linked as evidence for the current answer.",
+        "no_reliable_drawing": "No reliable drawing evidence found.",
+        "ifc_answer_source": "The answer remains grounded in IFC model data.",
+        "related_drawing": "Related drawing evidence",
+        "match_details": "Drawing match details",
+        "match_basis": "Match basis",
+        "source": "Evidence Source",
+        "set": "Set",
+        "field": "Field",
+        "value": "Value",
+        "unit": "Unit",
+        "unit_unavailable": "unit unavailable",
+        "unnamed": "Unnamed object",
+        "candidate": "Candidate object or field",
+
         "development_preview": "Development Preview",
         "course_data_not_loaded": "Course Data Not Loaded",
         "project": "Project",
@@ -155,7 +198,7 @@ UI_TEXT = {
         "llm_config_incomplete": "The LLM configuration is incomplete.",
         "llm_request_failed": "The LLM planner could not return a query plan.",
         "ifc_evidence": "IFC Evidence",
-        "drawing_evidence": "Drawing",
+        "drawing_evidence": "Drawing Evidence",
         "query_details": "Query",
         "global_id": "GlobalId",
         "entity_type": "Type",
@@ -224,53 +267,57 @@ def main() -> None:
         with project_column:
             with st.container(key="project_panel"):
                 uploads = _render_project_panel(locale)
-                with st.expander(_text(locale, "development_settings"), expanded=False):
-                    use_synthetic = st.checkbox(
-                        _text(locale, "synthetic_mode"),
-                        value=False,
-                        disabled=uploads.has_real_upload,
-                        key="use_synthetic",
-                    )
-                    planner_control_key = f"planner_mode_control_{locale}"
-                    st.session_state.setdefault("_planner_mode", "llm")
-                    planner_labels = {
-                        "llm": _text(locale, "llm_planner"),
-                        "development": _text(locale, "development_planner"),
-                    }
-                    st.session_state.setdefault(
-                        planner_control_key,
-                        planner_labels[st.session_state["_planner_mode"]],
-                    )
-                    planner_label = st.segmented_control(
-                        _text(locale, "planner"),
-                        tuple(planner_labels.values()),
-                        key=planner_control_key,
-                        on_change=_sync_planner_mode,
-                        args=(planner_control_key, locale),
-                    )
-                    planner_mode = next(
-                        mode
-                        for mode, label in planner_labels.items()
-                        if label == planner_label
-                    )
-                    st.session_state["_planner_mode"] = planner_mode
-
-                    synthetic_dataset = _load_synthetic_dataset(
-                        locale,
-                        use_synthetic=use_synthetic,
-                        has_real_upload=uploads.has_real_upload,
-                    )
-                    data_source, dataset = select_project_source(
-                        real_dataset=uploads.ifc_dataset,
-                        has_real_upload=uploads.has_real_upload,
-                        use_synthetic=use_synthetic,
-                        synthetic_dataset=synthetic_dataset,
-                    )
-                    _render_project_mode_badge(locale, data_source)
-                    if dataset is not None:
-                        for warning in _ifc_warnings(dataset, locale):
-                            _status(warning, "neutral")
-                    planner = _planner(planner_mode, locale)
+                development_mode = st.toggle(_text(locale, "development_mode"), value=False, key="development_mode")
+                use_synthetic = st.session_state.get("_use_synthetic", False)
+                planner_mode = st.session_state.get("_planner_mode", "llm")
+                if development_mode:
+                    with st.expander(_text(locale, "development_settings"), expanded=False):
+                        use_synthetic = st.checkbox(
+                            _text(locale, "synthetic_mode"),
+                            value=use_synthetic,
+                            disabled=uploads.has_real_upload,
+                            key="use_synthetic",
+                        )
+                        planner_control_key = f"planner_mode_control_{locale}"
+                        st.session_state.setdefault("_planner_mode", "llm")
+                        planner_labels = {
+                            "llm": _text(locale, "llm_planner"),
+                            "development": _text(locale, "development_planner"),
+                        }
+                        st.session_state.setdefault(
+                            planner_control_key,
+                            planner_labels[st.session_state["_planner_mode"]],
+                        )
+                        planner_label = st.segmented_control(
+                            _text(locale, "planner"),
+                            tuple(planner_labels.values()),
+                            key=planner_control_key,
+                            on_change=_sync_planner_mode,
+                            args=(planner_control_key, locale),
+                        )
+                        planner_mode = next(
+                            mode
+                            for mode, label in planner_labels.items()
+                            if label == planner_label
+                        )
+                        st.session_state["_planner_mode"] = planner_mode
+                    st.session_state["_use_synthetic"] = use_synthetic
+                synthetic_dataset = _load_synthetic_dataset(
+                    locale,
+                    use_synthetic=use_synthetic,
+                    has_real_upload=uploads.has_real_upload,
+                )
+                data_source, dataset = select_project_source(
+                    real_dataset=uploads.ifc_dataset,
+                    has_real_upload=uploads.has_real_upload,
+                    use_synthetic=use_synthetic,
+                    synthetic_dataset=synthetic_dataset,
+                )
+                _render_project_mode_badge(locale, data_source)
+                if dataset is not None:
+                    for warning in _ifc_warnings(dataset, locale):
+                        _status(warning, "neutral")
+                planner = _planner(planner_mode, locale)
 
         active_project_key = (data_source, uploads.project_key)
         if st.session_state.get("active_project_key") != active_project_key:
@@ -306,14 +353,14 @@ def _render_header(locale: str) -> None:
             st.markdown(
                 "<div class='product-lockup'>"
                 "<div class='product-title'>BIM Evidence QA</div>"
-                "<div class='product-subtitle'>BIM证据问答</div>"
+                f"<div class='product-subtitle'>{'BIM证据问答' if locale == 'zh' else 'BIM Evidence QA'}</div>"
                 "</div>",
                 unsafe_allow_html=True,
             )
         with status_column:
             st.markdown(
                 "<div class='header-status'><span></span>"
-                f"{html.escape(_text(locale, 'development_preview'))}</div>",
+                f"{html.escape(('课堂演示' if locale == 'zh' else 'Classroom Demo'))}</div>",
                 unsafe_allow_html=True,
             )
         with language_column:
@@ -542,7 +589,7 @@ def _render_assistant_panel(
                 unsafe_allow_html=True,
             )
         for item in history:
-            _render_chat_turn(item)
+            _render_chat_turn(item, locale)
 
     enabled = dataset is not None and planner is not None
     with st.form("question_form", clear_on_submit=True, border=False):
@@ -574,8 +621,19 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
     try:
         outcome = run_question(dataset, question, planner)
     except ResolutionError as error:
-        _record_error(question, f"{error.code}: {error}", str(error))
-        st.session_state["last_resolution_error"] = error.as_dict()
+        _record_error(question, _text(locale, error.code if error.code in UI_TEXT[locale] else "unsupported"), str(error))
+        st.session_state["chat_history"][-1]["error_key"] = error.code if error.code in UI_TEXT[locale] else "unsupported"
+        payload = error.as_dict()
+        rows = []
+        for candidate in error.candidates:
+            for entity in dataset.entities:
+                if entity.entity_id == candidate:
+                    rows.append({"Name": entity.name, "GlobalId": entity.global_id, "IFC": _ifc_type_label(entity.kind)})
+                for prop in entity.properties:
+                    if candidate == f"{prop.path} [#{prop.source_id}]":
+                        rows.append({"Name": entity.name, "GlobalId": entity.global_id, "IFC": _ifc_type_label(entity.kind), "Source": prop.source.value, "Set": prop.set_name, "Field": prop.path, "Value": str(prop.value), "Unit": prop.unit})
+        payload["evidence_rows"] = rows
+        st.session_state["last_resolution_error"] = payload
     except (UnsupportedQueryError, InvalidPlannerOutputError) as error:
         _record_error(
             question,
@@ -599,7 +657,8 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
             str(error),
         )
     except QueryExecutionError as error:
-        _record_error(question, str(error), str(error))
+        _record_error(question, _text(locale, "unsupported"), str(error))
+        st.session_state["chat_history"][-1]["error_key"] = "unsupported"
     else:
         st.session_state.pop("last_resolution_error", None)
         st.session_state["last_outcome"] = outcome
@@ -607,7 +666,8 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
         st.session_state["chat_history"].append(
             {
                 "question": question,
-                "answer": outcome.answer.text,
+                "answer": AnswerBuilder().build(outcome.plan, outcome.result, locale).text,
+                "outcome": outcome,
                 "status": "answer",
             }
         )
@@ -626,9 +686,19 @@ def _record_error(question: str, message: str, details: str) -> None:
     )
 
 
-def _render_chat_turn(item: dict[str, str]) -> None:
+def _render_chat_turn(item: dict, locale: str) -> None:
     question = html.escape(item["question"])
-    answer = html.escape(item["answer"])
+    if outcome := item.get("outcome"):
+        text = AnswerBuilder().build(outcome.plan, outcome.result, locale).text
+    elif item.get("error_key"):
+        text = _text(locale, item["error_key"])
+    else:
+        text = item["answer"]
+        for key in ("unsupported_query", "incomplete_data", "llm_request_failed"):
+            if text in (UI_TEXT["zh"][key], UI_TEXT["en"][key]):
+                text = _text(locale, key)
+                break
+    answer = html.escape(text)
     status_class = " chat-message--error" if item["status"] == "error" else ""
     st.markdown(
         "<div class='chat-turn'>"
@@ -647,8 +717,7 @@ def _render_evidence_panel(
         (
             _text(locale, "ifc_evidence"),
             _text(locale, "drawing_evidence"),
-            _text(locale, "query_details"),
-        ),
+        ) + ((_text(locale, "query_details"),) if st.session_state.get("development_mode", False) else ()),
         default=_text(locale, "drawing_evidence") if getattr(st.session_state.get("drawing_retrieval"), "best", None) else _text(locale, "ifc_evidence"),
         key=f"evidence_tabs_{len(st.session_state.get('chat_history', []))}",
     )
@@ -657,8 +726,9 @@ def _render_evidence_panel(
         _render_ifc_evidence(locale, outcome)
     with tabs[1]:
         _render_drawing_panel(locale, drawings)
-    with tabs[2]:
-        _render_query_panel(locale, outcome)
+    if st.session_state.get("development_mode", False):
+        with tabs[2]:
+            _render_query_panel(locale, outcome)
 
 
 def _render_ifc_evidence(
@@ -668,14 +738,20 @@ def _render_ifc_evidence(
     with st.container(key="ifc_evidence_scroll"):
         if not isinstance(outcome, ApplicationQueryResult) or not outcome.answer.evidence:
             if error := st.session_state.get("last_resolution_error"):
-                st.error(f"{error['code']}: {error['message']}")
+                st.error(_text(locale, error["code"] if error["code"] in UI_TEXT[locale] else "unsupported"))
                 if error["candidates"]:
-                    st.write(error["candidates"])
+                    if error.get("evidence_rows"):
+                        labels = {"Name": "名称", "Source": "证据来源", "Set": "属性 / 工程量集", "Field": "字段", "Value": "数值", "Unit": "单位"} if locale == "zh" else {}
+                        st.dataframe([{labels.get(k, k): v for k, v in row.items()} for row in error["evidence_rows"]], hide_index=True)
+                    else:
+                        st.dataframe([{_text(locale, "candidate"): candidate.split(" [#", 1)[0]} for candidate in error["candidates"]], hide_index=True)
+                if st.session_state.get("development_mode", False):
+                    st.json(error)
             _empty_state(_text(locale, "no_ifc_evidence"))
             return
         evidence_rows = []
         for evidence in outcome.answer.evidence:
-            name = html.escape(evidence.name or evidence.entity_id)
+            name = html.escape(evidence.name or _text(locale, "unnamed"))
             kind = html.escape(_ifc_type_label(evidence.kind))
             global_id = (
                 html.escape(evidence.global_id)
@@ -687,7 +763,7 @@ def _render_ifc_evidence(
                 "<div class='evidence-row-heading'>"
                 f"<strong>{name}</strong><span>{kind}</span>"
                 "</div>"
-                f"<code>{global_id}</code>"
+                f"<code>GlobalId: {global_id}</code>"
                 "</div>"
             )
         count_label = _text(locale, "entity_count").format(
@@ -706,13 +782,25 @@ def _render_ifc_evidence(
             if evidence.properties:
                 st.dataframe([
                     {
-                        "Source": p.source.value, "Set": p.set_name, "Field": p.field_name,
-                        "Value": str(p.value), "Measure Type": p.measure_type or "unavailable",
-                        "Unit": p.unit or "unit unavailable", "Unit Source": p.unit_source or "unavailable",
-                        "IFC Field ID": p.source_id, "Inherited": p.inherited,
+                        _text(locale, "source"): ({"IFC Attribute": "IFC 属性", "Property Set": "属性集", "Quantity Set": "工程量集", "Relationship-derived value": "关系派生值"}.get(p.source.value, p.source.value) if locale == "zh" else p.source.value),
+                        _text(locale, "set"): p.set_name,
+                        _text(locale, "field"): p.path,
+                        _text(locale, "value"): str(p.value),
+                        _text(locale, "unit"): p.unit or _text(locale, "unit_unavailable"),
+                        **({"Measure Type": p.measure_type, "Unit Source": p.unit_source, "IFC Field ID": p.source_id, "Inherited": p.inherited} if st.session_state.get("development_mode", False) else {}),
                     }
                     for p in evidence.properties
                 ], hide_index=True)
+
+
+def _drawing_term_label(locale: str, source: str, text: str) -> str:
+    labels = {
+        "object name": "对象名称", "exported element number": "导出对象编号",
+        "instance mark": "对象 Mark", "type mark (shared)": "共享 Type Mark",
+        "storey label": "楼层名称", "spatial scope": "空间范围",
+        "property-based Reference Level": "属性 Reference Level",
+    }
+    return f"{labels.get(source, source) if locale == 'zh' else source}: {text}"
 
 
 def _render_drawing_panel(
@@ -724,101 +812,114 @@ def _render_drawing_panel(
             _empty_state(_text(locale, "no_drawing_evidence"))
             return
 
-        drawing_by_name = {drawing.file_name: drawing for drawing in drawings}
         retrieval = st.session_state.get("drawing_retrieval")
         best = retrieval.best if retrieval else None
-        outcome = st.session_state.get("last_outcome")
-        selection_key = (st.session_state.get("active_project_key"), getattr(outcome, "question", None),
-                         len(st.session_state.get("chat_history", [])))
-        if st.session_state.get("_automatic_drawing_selection") != selection_key:
-            st.session_state["_automatic_drawing_selection"] = selection_key
-            if best:
-                st.session_state["drawing_selector"] = best.document
-                st.session_state["drawing_page_selector"] = best.page_number
-        if retrieval:
-            if best:
-                st.caption(f"{best.drawing_number or ''} · {best.sheet_title or ''} · page {best.page_number} · score {best.score}")
-                summary = "; ".join(f"{t.source}: {t.text}" for t in best.matched_terms[:3])
-                if len(best.matched_terms) > 3:
-                    summary += f"; +{len(best.matched_terms) - 3} terms"
-                st.caption(summary + ". Related sheet; IFC values remain the answer source.")
-            else:
-                st.caption(retrieval.reason)
-            with st.expander("Drawing match details", expanded=False):
-                st.json([asdict(c) for c in retrieval.candidates[:5]])
+        if best:
+            st.caption(_text(locale, "related_drawing"))
+            st.caption(f"{_text(locale, 'drawing')}：{best.drawing_number or best.document} · {_text(locale, 'page')} {best.page_number}")
+            st.caption(f"{_text(locale, 'match_basis')}：" + "; ".join(_drawing_term_label(locale, t.source, t.text) for t in best.matched_terms[:3]))
+            st.caption(_text(locale, "ifc_answer_source"))
+            matched_document = next(d for d in drawings if d.file_name == best.document)
+            _render_drawing_page(locale, matched_document, best.page_number)
         elif st.session_state.get("chat_history"):
-            st.caption("No reliable drawing evidence found.")
-        if not best and st.session_state.get("chat_history"):
-            st.caption("手动预览，与当前答案未建立关联。" if locale == "zh" else "Manual preview; not linked to the current answer.")
-        if st.session_state.get("drawing_selector") not in drawing_by_name:
-            st.session_state.pop("drawing_selector", None)
-        selected_name = st.selectbox(
-            _text(locale, "drawing"),
-            tuple(drawing_by_name),
-            key="drawing_selector",
-            label_visibility="collapsed",
-        )
-        selected_drawing = drawing_by_name[selected_name]
-        if st.session_state.get("drawing_page_selector", 1) > selected_drawing.page_count:
-            st.session_state.pop("drawing_page_selector", None)
-        page_number = st.selectbox(
-            _text(locale, "page"),
-            tuple(range(1, selected_drawing.page_count + 1)),
-            key="drawing_page_selector",
-            format_func=lambda value: f"{_text(locale, 'page')} {value}",
-        )
-        try:
-            preview = PyMuPDFParser().render_page(selected_drawing, page_number)
-        except PDFParseError as error:
-            _status(
-                f"{_text(locale, 'drawing_preview_failed')}: {error}",
-                "warning",
+            st.caption(_text(locale, "no_reliable_drawing"))
+            if isinstance(st.session_state.get("last_outcome"), ApplicationQueryResult):
+                st.caption(_text(locale, "ifc_answer_source"))
+        if retrieval:
+            with st.expander(_text(locale, "match_details"), expanded=False):
+                if st.session_state.get("development_mode", False):
+                    st.json([asdict(c) for c in retrieval.candidates[:5]])
+                else:
+                    for candidate in retrieval.candidates[:5]:
+                        st.caption(f"{candidate.drawing_number or candidate.document} · {_text(locale, 'page')} {candidate.page_number}")
+                        st.text("; ".join(_drawing_term_label(locale, t.source, t.text) for t in candidate.matched_terms))
+        with st.expander(_text(locale, "manual_drawings"), expanded=False):
+            st.caption(_text(locale, "manual_note"))
+            _render_manual_drawings(locale, drawings, best)
+
+
+def _render_manual_drawings(locale: str, drawings: tuple[DrawingDocument, ...], best) -> None:
+    drawing_by_name = {drawing.file_name: drawing for drawing in drawings}
+    outcome = st.session_state.get("last_outcome")
+    selection_key = (st.session_state.get("active_project_key"), getattr(outcome, "question", None), len(st.session_state.get("chat_history", [])))
+    if st.session_state.get("_automatic_drawing_selection") != selection_key:
+        st.session_state["_automatic_drawing_selection"] = selection_key
+        if best:
+            st.session_state["drawing_selector"] = best.document
+            st.session_state["drawing_page_selector"] = best.page_number
+    if st.session_state.get("drawing_selector") not in drawing_by_name:
+        st.session_state.pop("drawing_selector", None)
+    selected_name = st.selectbox(
+        _text(locale, "drawing"),
+        tuple(drawing_by_name),
+        key="drawing_selector",
+        label_visibility="collapsed",
+    )
+    selected_drawing = drawing_by_name[selected_name]
+    if st.session_state.get("drawing_page_selector", 1) > selected_drawing.page_count:
+        st.session_state.pop("drawing_page_selector", None)
+    page_number = st.selectbox(
+        _text(locale, "page"),
+        tuple(range(1, selected_drawing.page_count + 1)),
+        key="drawing_page_selector",
+        format_func=lambda value: f"{_text(locale, 'page')} {value}",
+    )
+    _render_drawing_page(locale, selected_drawing, page_number)
+
+    text_key = (
+        "text_layer_available"
+        if selected_drawing.has_text_layer
+        else "text_layer_unavailable"
+    )
+    _status(
+        f"{_text(locale, 'pages')}: {selected_drawing.page_count} · "
+        f"{_text(locale, text_key)}",
+        "success" if selected_drawing.has_text_layer else "neutral",
+    )
+    if not selected_drawing.has_text_layer:
+        _status(_text(locale, "no_text_layer"), "neutral")
+
+    query_term = st.text_input(
+        _text(locale, "search_drawing"),
+        placeholder=_text(locale, "search_placeholder"),
+        key="drawing_text_search",
+    )
+    if query_term.strip():
+        matches = [
+            (drawing.file_name, page.page_number)
+            for drawing in drawings
+            for page in search_drawing_text(drawing, query_term)
+        ]
+        if matches:
+            rows = "".join(
+                "<div class='search-result'>"
+                f"<span>{html.escape(file_name)}</span>"
+                f"<strong>{html.escape(_text(locale, 'page'))} {matching_page}</strong>"
+                "</div>"
+                for file_name, matching_page in matches
+            )
+            st.markdown(
+                f"<div class='evidence-label'>{html.escape(_text(locale, 'matching_pages'))}</div>{rows}",
+                unsafe_allow_html=True,
             )
         else:
-            st.image(
-                "data:image/png;base64," + base64.b64encode(preview).decode("ascii"),
-                caption=f"{selected_name} · {_text(locale, 'page')} {page_number}",
-                width="stretch",
-            )
+            _empty_state(_text(locale, "no_matching_pages"))
 
-        text_key = (
-            "text_layer_available"
-            if selected_drawing.has_text_layer
-            else "text_layer_unavailable"
-        )
+
+def _render_drawing_page(locale: str, selected_drawing: DrawingDocument, page_number: int) -> None:
+    try:
+        preview = PyMuPDFParser().render_page(selected_drawing, page_number)
+    except PDFParseError as error:
         _status(
-            f"{_text(locale, 'pages')}: {selected_drawing.page_count} · "
-            f"{_text(locale, text_key)}",
-            "success" if selected_drawing.has_text_layer else "neutral",
+            f"{_text(locale, 'drawing_preview_failed')}: {error}",
+            "warning",
         )
-        if not selected_drawing.has_text_layer:
-            _status(_text(locale, "no_text_layer"), "neutral")
-
-        query_term = st.text_input(
-            _text(locale, "search_drawing"),
-            placeholder=_text(locale, "search_placeholder"),
-            key="drawing_text_search",
+    else:
+        st.image(
+            "data:image/png;base64," + base64.b64encode(preview).decode("ascii"),
+            caption=f"{selected_drawing.file_name} · {_text(locale, 'page')} {page_number}",
+            width="stretch",
         )
-        if query_term.strip():
-            matches = [
-                (drawing.file_name, page.page_number)
-                for drawing in drawings
-                for page in search_drawing_text(drawing, query_term)
-            ]
-            if matches:
-                rows = "".join(
-                    "<div class='search-result'>"
-                    f"<span>{html.escape(file_name)}</span>"
-                    f"<strong>{html.escape(_text(locale, 'page'))} {matching_page}</strong>"
-                    "</div>"
-                    for file_name, matching_page in matches
-                )
-                st.markdown(
-                    f"<div class='evidence-label'>{html.escape(_text(locale, 'matching_pages'))}</div>{rows}",
-                    unsafe_allow_html=True,
-                )
-            else:
-                _empty_state(_text(locale, "no_matching_pages"))
 
 
 def _render_query_panel(locale: str, outcome: object) -> None:
@@ -932,7 +1033,8 @@ def select_project_source(
 
 def _planner(mode: str, locale: str = "en"):
     if mode == "development":
-        _status(_text(locale, "development_planner_note"), "neutral")
+        if st.session_state.get("development_mode", False):
+            _status(_text(locale, "development_planner_note"), "neutral")
         return DevelopmentNaturalLanguagePlanner()
 
     if not os.getenv("BIM_QA_LLM_API_KEY"):

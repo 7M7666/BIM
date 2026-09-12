@@ -310,3 +310,18 @@ def test_course_rst_never_invents_storey_containment(course_models, question):
 def test_course_rac_absent_beams_do_not_become_storeys(course_models):
     with pytest.raises(UnsupportedQueryError, match="beam"):
         run_question(course_models["rac"][1], "How many beams are on Level 2?", DevelopmentNaturalLanguagePlanner())
+
+
+@pytest.mark.parametrize("question", ("几层", "几层楼", "有几层", "有几层楼", "多少层", "多少层楼", "多少楼层", "有多少楼层", "这个建筑有几层", "这个建筑有几层楼？", "多少楼"))
+def test_chinese_storey_count_phrases(course_models, question):
+    from bim_evidence_qa.domain import QueryOperation
+    outcome = run_question(course_models["rac"][1], question, DevelopmentNaturalLanguagePlanner())
+    assert outcome.plan.operation is QueryOperation.COUNT
+    assert outcome.plan.kind == "storey"
+    assert outcome.result.value == 6
+
+
+@pytest.mark.parametrize("question", ("多少楼板", "这栋楼有多少门", "楼梯有多少", "楼 103"))
+def test_storey_count_normalization_does_not_replace_bare_building_word(question):
+    from bim_evidence_qa.query.terminology import normalize_question
+    assert normalize_question(question) != "count storey"

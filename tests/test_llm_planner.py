@@ -3,7 +3,14 @@ import json
 import pytest
 
 from bim_evidence_qa.application import run_question
-from bim_evidence_qa.domain import AggregateFunction, QueryOperation
+from bim_evidence_qa.domain import (
+    AggregateFunction,
+    BuildingDataset,
+    BuildingEntity,
+    PropertySource,
+    PropertyValue,
+    QueryOperation,
+)
 from bim_evidence_qa.query import (
     InvalidPlannerOutputError,
     LLMProviderSettings,
@@ -206,3 +213,62 @@ def test_llm_planner_accepts_catalog_validated_location_plan(catalog):
     assert plan.operation is QueryOperation.LOCATION
     assert plan.kind == "space"
     assert "operation location" in provider.system_prompt
+
+
+def test_llm_planner_resolves_an_object_ref_for_find(catalog):
+    provider = FakeProvider(json.dumps({
+        "operation": "find", "kind": "door", "object_ref": "D101",
+    }))
+
+    plan = LLMQueryPlanner(provider).plan("Can you find Door D101?", catalog)
+
+    assert plan.operation is QueryOperation.FIND
+    assert plan.kind == "door"
+    assert plan.filters[0].field == "entity_id"
+    assert plan.filters[0].value == "door-d101"
+
+
+def test_llm_planner_resolves_a_numbered_object_for_location():
+    dataset = BuildingDataset((
+        BuildingEntity("storey-2", "storey", name="Level 2"),
+        BuildingEntity("door-422466", "door", name="Door 422466", container_id="storey-2"),
+    ))
+    catalog = QueryCatalog.from_dataset(dataset)
+    provider = FakeProvider(json.dumps({
+        "operation": "location", "kind": "door", "name": "编号 422466",
+    }))
+
+    plan = LLMQueryPlanner(provider).plan("编号422466的门在哪一层", catalog)
+
+    assert plan.operation is QueryOperation.LOCATION
+    assert plan.kind == "door"
+    assert plan.filters[0].field == "entity_id"
+    assert plan.filters[0].value == "door-422466"
+
+
+def test_llm_planner_resolves_a_chinese_numbered_property_question():
+    dataset = BuildingDataset((
+        BuildingEntity(
+            "door-422466",
+            "door",
+            name="Door 422466",
+            properties=(PropertyValue(
+                PropertySource.QUANTITY,
+                "Qto_DoorBaseQuantities",
+                "Width",
+                0.9,
+                unit="m",
+            ),),
+        ),
+    ))
+    planner = LLMQueryPlanner(FakeProvider(json.dumps({
+        "operation": "find",
+        "kind": "door",
+        "object_ref": "编号422466",
+        "requested_property": "width",
+    })))
+
+    outcome = run_question(dataset, "编号422466的门多宽", planner)
+
+    assert outcome.plan.requested_property == "width"
+    assert outcome.answer.value == 0.9

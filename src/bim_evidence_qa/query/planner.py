@@ -254,7 +254,7 @@ class DevelopmentNaturalLanguagePlanner:
         if match:
             reference = match.group(1)
         else:
-            long_number = re.search(r"\b\d{5,}\b", question)
+            long_number = re.search(r"(?<!\d)\d{5,}(?!\d)", question)
             reference = long_number.group(0) if long_number else None
         if reference is None:
             return None

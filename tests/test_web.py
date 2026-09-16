@@ -82,7 +82,7 @@ def test_app_defaults_to_chinese_llm_planner_without_runtime_errors():
     assert not app.toggle
     assert len(app.button_group) == 1
     assert not app.checkbox
-    assert any("v0.2.0" in item.value for item in app.markdown)
+    assert any("v0.2.1" in item.value for item in app.markdown)
     assert [tab.label for tab in app.tabs] == ["IFC证据", "图纸证据"]
     app.query_params["dev"] = "1"
     app.run()

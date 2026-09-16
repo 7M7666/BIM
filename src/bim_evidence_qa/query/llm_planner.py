@@ -9,6 +9,7 @@ from bim_evidence_qa.domain import (
     FilterOperator,
     QueryOperation,
     QueryPlan,
+    ResolutionError,
     ScalarValue,
 )
 from bim_evidence_qa.query.catalog import LevelResolutionError, QueryCatalog, REFERENCE_LEVEL_FIELD
@@ -113,8 +114,8 @@ class LLMQueryPlanner:
             "For an explicitly requested Reference Level use field reference_level, "
             "operator eq, and its name. This is a property-based level, never spatial "
             "IfcBuildingStorey containment. Do not substitute it for on/in a storey. "
-            "For questions asking which level contains or an entity belongs to, use operation location "
-            "with the canonical entity kind and no filters. The engine reports either spatial "
+            "For questions asking which level contains an entity or an entity belongs to, use operation location "
+            "with the canonical entity kind. For one named or numbered entity, also use object_ref; otherwise use no filters. The engine reports either spatial "
             "IfcBuildingStorey containment or an explicit Reference Level property. "
             "For a single object property use operation find, canonical kind, object_ref "
             "(exact name, GlobalId or exported element ID), and requested_property. "
@@ -188,15 +189,19 @@ class LLMQueryPlanner:
         operation = self._operation(payload.get("operation"), catalog)
         kind = self._optional_string(payload.get("kind"), "kind")
         name = self._optional_string(payload.get("name"), "name")
+        object_ref = self._optional_string(payload.get("object_ref"), "object_ref")
 
         if kind is not None and kind not in catalog.kinds:
             raise InvalidPlannerOutputError(
                 f"Planner returned unavailable entity kind '{kind}'."
             )
         if name is not None and name not in catalog.entity_names:
-            raise InvalidPlannerOutputError(
-                f"Planner returned unavailable entity name '{name}'."
-            )
+            if operation in {QueryOperation.FIND, QueryOperation.LOCATION} and object_ref is None:
+                object_ref, name = name, None
+            else:
+                raise InvalidPlannerOutputError(
+                    f"Planner returned unavailable entity name '{name}'."
+                )
 
         filters = self._filters(payload.get("filters", []), kind, catalog)
         aggregate_function = self._aggregate_function(
@@ -207,7 +212,6 @@ class LLMQueryPlanner:
         )
 
         property_request = self._optional_string(payload.get("requested_property"), "requested_property")
-        object_ref = self._optional_string(payload.get("object_ref"), "object_ref")
         if property_request is not None:
             if operation is not QueryOperation.FIND or kind is None or aggregate_field or aggregate_function:
                 raise InvalidPlannerOutputError("Property queries require find and a canonical kind.")
@@ -215,14 +219,23 @@ class LLMQueryPlanner:
                 raise InvalidPlannerOutputError("Property path is unavailable in the catalog.")
             if not (object_ref or name):
                 raise InvalidPlannerOutputError("Property queries require an explicit object_ref.")
-            entity = resolve_object(object_ref or name, catalog.entities_by_id.values(), kind)
+            entity = self._resolve_object_reference(object_ref or name, catalog, kind)
             return QueryPlan(
                 operation=operation, kind=kind,
                 filters=(FilterCondition("entity_id", FilterOperator.EQ, entity.entity_id), *filters),
                 requested_property=property_request,
             )
         if object_ref is not None:
-            raise InvalidPlannerOutputError("object_ref requires requested_property.")
+            if operation not in {QueryOperation.FIND, QueryOperation.LOCATION}:
+                raise InvalidPlannerOutputError(
+                    "object_ref is only valid for find, location, or property queries."
+                )
+            entity = self._resolve_object_reference(object_ref, catalog, kind)
+            return QueryPlan(
+                operation=operation,
+                kind=entity.kind,
+                filters=(FilterCondition("entity_id", FilterOperator.EQ, entity.entity_id), *filters),
+            )
 
         self._validate_operation_fields(
             operation,
@@ -244,6 +257,22 @@ class LLMQueryPlanner:
             )
         except ValueError as error:
             raise InvalidPlannerOutputError(str(error)) from error
+
+    @staticmethod
+    def _resolve_object_reference(
+        reference: str,
+        catalog: QueryCatalog,
+        kind: str | None,
+    ):
+        try:
+            return resolve_object(reference, catalog.entities_by_id.values(), kind)
+        except ResolutionError:
+            numeric_id = re.search(r"(?<!\d)(\d{5,})(?!\d)", reference)
+            if numeric_id is None or numeric_id.group(1) == reference:
+                raise
+            return resolve_object(
+                numeric_id.group(1), catalog.entities_by_id.values(), kind,
+            )
 
     @staticmethod
     def _operation(value: object, catalog: QueryCatalog) -> QueryOperation:

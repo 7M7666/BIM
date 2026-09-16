@@ -86,8 +86,8 @@ def test_multilingual_property_plan_value_and_evidence(bilingual_dataset, questi
 
 
 @pytest.mark.parametrize("question,code", [
-    ("这个门的宽度是多少？", "unsupported"),
-    ("这个 IfcBeam 的 Length 是多少？", "unsupported"),
+    ("这个门的宽度是多少？", "needs_context"),
+    ("这个 IfcBeam 的 Length 是多少？", "needs_context"),
     ("What is the length of Beam missing?", "entity_not_found"),
     ("What is Qto_beam.Missing of Beam X?", "missing"),
 ])

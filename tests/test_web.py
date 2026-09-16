@@ -4,7 +4,8 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from bim_evidence_qa import web
-from bim_evidence_qa.query import IncompleteDataError
+from bim_evidence_qa.domain import BuildingDataset, BuildingEntity, PropertySource, PropertyValue
+from bim_evidence_qa.query import DevelopmentNaturalLanguagePlanner, IncompleteDataError
 from bim_evidence_qa.web import UI_TEXT, _ifc_warnings, select_project_source
 
 
@@ -98,7 +99,7 @@ def test_incomplete_data_message_is_recorded_in_the_active_locale(
     session_state = {"chat_history": []}
     monkeypatch.setattr(web.st, "session_state", session_state)
 
-    def raise_incomplete_data(*_args):
+    def raise_incomplete_data(*_args, **_kwargs):
         raise IncompleteDataError(
             field="MeasuredArea",
             target_kind="space",
@@ -111,13 +112,9 @@ def test_incomplete_data_message_is_recorded_in_the_active_locale(
 
     web._submit_question(locale, object(), object(), "largest space")
 
-    assert session_state["chat_history"] == [
-        {
-            "question": "largest space",
-            "answer": UI_TEXT[locale]["incomplete_data"],
-            "status": "error",
-        }
-    ]
+    assert session_state["chat_history"][0]["question"] == "largest space"
+    assert session_state["chat_history"][0]["status"] == "error"
+    assert "MeasuredArea" in session_state["chat_history"][0]["answer"]
     assert "available for 2 of 3 entities" in session_state["last_error_details"]
 
 
@@ -127,12 +124,12 @@ def test_resolution_errors_use_locale_and_preserve_candidates(monkeypatch, synth
     from bim_evidence_qa.domain import ResolutionError
     state = {"chat_history": []}
     monkeypatch.setattr(web.st, "session_state", state)
-    def fail(*args):
+    def fail(*args, **kwargs):
         raise ResolutionError(code, "Internal English diagnostic", ("Qto_Test.Area [#123]",))
     monkeypatch.setattr(web, "run_question", fail)
     web._submit_question(locale, synthetic_dataset, object(), "面积？")
     expected_key = "unsupported_query" if code == "unsupported" else code
-    assert state["chat_history"][0]["answer"] == UI_TEXT[locale][expected_key]
+    assert state["chat_history"][0]["answer"] != "Internal English diagnostic"
     assert state["chat_history"][0]["error_key"] == expected_key
     assert state["last_resolution_error"]["candidates"] == ["Qto_Test.Area [#123]"]
 
@@ -146,12 +143,12 @@ def test_unsupported_query_uses_specific_prototype_message(monkeypatch, syntheti
     monkeypatch.setattr(
         web,
         "run_question",
-        lambda *_args: (_ for _ in ()).throw(UnsupportedQueryError("Relationship query")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(UnsupportedQueryError("Relationship query")),
     )
 
     web._submit_question(locale, synthetic_dataset, object(), "五块楼板都在哪里？")
 
-    assert state["chat_history"][0]["answer"] == UI_TEXT[locale]["unsupported_query"]
+    assert "门" in state["chat_history"][0]["answer"] if locale == "zh" else "doors" in state["chat_history"][0]["answer"]
     assert "project data" not in state["chat_history"][0]["answer"].casefold()
 
 
@@ -168,6 +165,64 @@ def test_missing_storey_data_uses_the_explicit_ifc_status(monkeypatch, locale):
 
     assert state["chat_history"][0]["answer"] == UI_TEXT[locale]["missing_storey_data"]
     assert state["last_resolution_error"]["code"] == "missing_storey_data"
+
+
+def test_web_carries_one_verified_object_into_a_property_follow_up(monkeypatch):
+    state = {"chat_history": []}
+    monkeypatch.setattr(web.st, "session_state", state)
+    dataset = BuildingDataset((
+        BuildingEntity(
+            "door-d101",
+            "door",
+            name="Door D101",
+            properties=(PropertyValue(
+                PropertySource.QUANTITY,
+                "Qto_DoorBaseQuantities",
+                "Width",
+                0.9,
+                unit="m",
+            ),),
+        ),
+    ))
+    planner = DevelopmentNaturalLanguagePlanner()
+
+    web._submit_question("zh", dataset, planner, "Find Door D101")
+    web._submit_question("zh", dataset, planner, "那它的宽度呢？")
+
+    assert len(state["chat_history"]) == 2
+    assert state["chat_history"][1]["outcome"].plan.requested_property == "width"
+    assert "0.9 m" in state["chat_history"][1]["answer"]
+
+
+def test_missing_property_guidance_names_the_object_and_available_fields():
+    dataset = BuildingDataset((
+        BuildingEntity(
+            "door-d101",
+            "door",
+            name="Door D101",
+            properties=(PropertyValue(
+                PropertySource.QUANTITY,
+                "Qto_DoorBaseQuantities",
+                "Width",
+                0.9,
+                unit="m",
+            ),),
+        ),
+    ))
+    error = web.ResolutionError("missing", "Property 'color' is unavailable on 'Door D101'.")
+
+    message = web._guided_resolution_message("zh", error, dataset)
+
+    assert "Door D101" in message
+    assert "color" in message
+    assert "Width" in message
+
+
+def test_missing_object_guidance_includes_the_reference():
+    dataset = BuildingDataset((BuildingEntity("door-d101", "door", name="Door D101"),))
+    error = web.ResolutionError("entity_not_found", "Entity not found: 'D999'.")
+
+    assert "D999" in web._guided_resolution_message("zh", error, dataset)
 
 
 def test_developer_toggle_preserves_debug_information_and_language_switch():

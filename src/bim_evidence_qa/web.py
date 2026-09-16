@@ -2,6 +2,7 @@ import hashlib
 import base64
 import html
 import os
+import re
 import tempfile
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -10,7 +11,11 @@ import streamlit as st
 
 from bim_evidence_qa import __version__
 from bim_evidence_qa.answering import AnswerBuilder
-from bim_evidence_qa.application import ApplicationQueryResult, run_question
+from bim_evidence_qa.application import (
+    ApplicationQueryResult,
+    ConversationContext,
+    run_question,
+)
 from bim_evidence_qa.domain import BuildingDataset, QueryOperation, QueryPlan, ResolutionError
 from bim_evidence_qa.drawing import retrieve_drawings
 from bim_evidence_qa.parsers import (
@@ -113,6 +118,7 @@ UI_TEXT = {
         "llm_key_missing": "尚未配置 LLM API Key。请配置云端 Secrets，或切换到开发规划器。",
         "llm_config_incomplete": "LLM 配置不完整。",
         "llm_request_failed": "LLM 规划器暂时无法返回查询计划。",
+        "needs_context": "请说明要查询的具体对象或构件类型。",
         "ifc_evidence": "IFC证据",
         "drawing_evidence": "图纸证据",
         "query_details": "查询详情",
@@ -212,6 +218,7 @@ UI_TEXT = {
         "llm_key_missing": "The LLM API key is not configured. Add Cloud Secrets or use the development planner.",
         "llm_config_incomplete": "The LLM configuration is incomplete.",
         "llm_request_failed": "The LLM planner could not return a query plan.",
+        "needs_context": "Specify the object or entity type you want to query.",
         "ifc_evidence": "IFC Evidence",
         "drawing_evidence": "Drawing Evidence",
         "query_details": "Query",
@@ -343,6 +350,7 @@ def main() -> None:
             st.session_state.pop("last_error_details", None)
             st.session_state.pop("last_resolution_error", None)
             st.session_state["chat_history"] = []
+            st.session_state.pop("conversation_context", None)
         st.session_state.setdefault("chat_history", [])
 
         with assistant_column:
@@ -637,12 +645,20 @@ def _render_assistant_panel(
 
 def _submit_question(locale: str, dataset: BuildingDataset, planner, question: str) -> None:
     try:
-        outcome = run_question(dataset, question, planner)
+        context = st.session_state.get("conversation_context")
+        outcome = run_question(
+            dataset,
+            question,
+            planner,
+            context=context if isinstance(context, ConversationContext) else None,
+        )
     except ResolutionError as error:
         error_key = _error_message_key(error.code)
-        _record_error(question, _text(locale, error_key), str(error))
+        message = _guided_resolution_message(locale, error, dataset)
+        _record_error(question, message, str(error))
         st.session_state["chat_history"][-1]["error_key"] = error_key
         payload = error.as_dict()
+        payload["user_message"] = message
         rows = []
         for candidate in error.candidates:
             for entity in dataset.entities:
@@ -654,9 +670,10 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
         payload["evidence_rows"] = rows
         st.session_state["last_resolution_error"] = payload
     except (UnsupportedQueryError, InvalidPlannerOutputError) as error:
+        message = _guided_unsupported_message(locale, dataset)
         _record_error(
             question,
-            _text(locale, "unsupported_query"),
+            message,
             str(error),
         )
         st.session_state["chat_history"][-1]["error_key"] = "unsupported_query"
@@ -673,7 +690,7 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
     except IncompleteDataError as error:
         _record_error(
             question,
-            _text(locale, "incomplete_data"),
+            _guided_incomplete_data_message(locale, error),
             str(error),
         )
     except QueryExecutionError as error:
@@ -682,6 +699,7 @@ def _submit_question(locale: str, dataset: BuildingDataset, planner, question: s
     else:
         st.session_state.pop("last_resolution_error", None)
         st.session_state["last_outcome"] = outcome
+        st.session_state["conversation_context"] = ConversationContext.from_outcome(outcome)
         st.session_state.pop("last_error_details", None)
         st.session_state["chat_history"].append(
             {
@@ -712,12 +730,108 @@ def _error_message_key(code: str) -> str:
     return code if code in UI_TEXT["zh"] else "unsupported_query"
 
 
+def _guided_resolution_message(
+    locale: str,
+    error: ResolutionError,
+    dataset: BuildingDataset,
+) -> str:
+    if error.code == "missing_storey_data":
+        return _text(locale, "missing_storey_data")
+    if error.code == "entity_not_found":
+        reference = _quoted_value(str(error))
+        if locale == "zh":
+            return (
+                f"未找到“{reference}”。请检查构件编号，或改用完整名称、GlobalId 再试。"
+                if reference else "没有找到对应的 BIM 对象。请检查构件编号、名称或 GlobalId。"
+            )
+        return (
+            f"No BIM object matches “{reference}”. Check its element number, full name, or GlobalId."
+            if reference else "No matching BIM object was found. Check its element number, name, or GlobalId."
+        )
+    if error.code == "missing":
+        property_name, entity_name = _missing_property_details(str(error))
+        suggestions = _available_property_names(dataset, entity_name)
+        if locale == "zh":
+            message = f"已找到“{entity_name}”，但 IFC 中没有可验证的“{property_name}”字段。"
+            return message + (f" 可继续查询：{suggestions}。" if suggestions else "")
+        message = f"“{entity_name}” was found, but its IFC data has no verifiable “{property_name}” field."
+        return message + (f" Try: {suggestions}." if suggestions else "")
+    if error.code == "ambiguous":
+        count = len(error.candidates)
+        if locale == "zh":
+            return f"找到 {count} 个可能匹配的对象或字段，无法唯一确定。请从 IFC 证据面板选择具体候选。"
+        return f"Found {count} possible objects or fields, so the answer is not unique. Choose a candidate in IFC Evidence."
+    if error.code == "needs_context":
+        if "count" in str(error).casefold() or "统计" in str(error):
+            return "请说明要统计门、窗、梁、柱或其他构件。" if locale == "zh" else "Specify whether to count doors, windows, beams, columns, or another entity type."
+        return "上一轮没有唯一对象，“它”无法对应到具体构件。请提供构件编号或名称。" if locale == "zh" else "The previous answer did not identify one object, so “it” is ambiguous. Provide an element number or name."
+    if error.code == "understood_but_unavailable":
+        return _guided_unsupported_message(locale, dataset, understood=True)
+    return _text(locale, _error_message_key(error.code))
+
+
+def _guided_unsupported_message(
+    locale: str,
+    dataset: BuildingDataset,
+    *,
+    understood: bool = False,
+) -> str:
+    kinds = _available_kind_names(dataset, locale)
+    if locale == "zh":
+        prefix = "已理解这个问题，但当前 IFC 没有对应的可验证数据。" if understood else "当前原型暂不支持这种查询。"
+        return f"{prefix} 当前模型可查询：{kinds}。可改问构件数量、指定构件、尺寸或已有属性。"
+    prefix = "The question is understood, but this IFC has no verifiable data for it." if understood else "This query is outside the current prototype scope."
+    return f"{prefix} This model can query: {kinds}. Try an entity count, a named object, a dimension, or an available property."
+
+
+def _guided_incomplete_data_message(locale: str, error: IncompleteDataError) -> str:
+    if locale == "zh":
+        return (
+            f"已理解该问题，但“{error.field}”仅在 {error.available_count}/{error.total_count} 个"
+            f"{_ifc_type_label(error.target_kind)} 中存在，无法给出可验证的完整答案。"
+        )
+    return (
+        f"The question is understood, but “{error.field}” is available for only "
+        f"{error.available_count}/{error.total_count} {error.target_kind} entities, so no complete verified answer is available."
+    )
+
+
+def _quoted_value(message: str) -> str | None:
+    match = re.search(r"'([^']+)'", message)
+    return match.group(1) if match else None
+
+
+def _missing_property_details(message: str) -> tuple[str, str]:
+    match = re.search(r"Property '([^']+)' is unavailable on '([^']+)'", message)
+    return match.groups() if match else ("requested property", "this object")
+
+
+def _available_property_names(dataset: BuildingDataset, entity_name: str) -> str:
+    entity = next((item for item in dataset.entities if item.name == entity_name), None)
+    if entity is None:
+        return ""
+    names = list(entity.attributes)
+    names.extend(property.field_name for property in entity.properties)
+    return "、".join(dict.fromkeys(names) if names else ())
+
+
+def _available_kind_names(dataset: BuildingDataset, locale: str) -> str:
+    labels = {
+        "beam": ("梁", "beams"), "column": ("柱", "columns"),
+        "slab": ("楼板", "slabs"), "footing": ("基础", "footings"),
+        "pile": ("桩", "piles"), "door": ("门", "doors"),
+        "window": ("窗", "windows"), "wall": ("墙", "walls"),
+        "space": ("房间", "spaces"), "storey": ("楼层", "storeys"),
+    }
+    ordered = ("door", "window", "beam", "column", "wall", "slab", "footing", "pile", "space", "storey")
+    names = [labels[kind][0 if locale == "zh" else 1] for kind in ordered if any(entity.kind == kind for entity in dataset.entities)]
+    return "、".join(names) if locale == "zh" else ", ".join(names)
+
+
 def _render_chat_turn(item: dict, locale: str) -> None:
     question = html.escape(item["question"])
     if outcome := item.get("outcome"):
         text = AnswerBuilder().build(outcome.plan, outcome.result, locale).text
-    elif item.get("error_key"):
-        text = _text(locale, item["error_key"])
     else:
         text = item["answer"]
         for key in ("unsupported_query", "incomplete_data", "llm_request_failed"):
@@ -764,7 +878,7 @@ def _render_ifc_evidence(
     with st.container(key="ifc_evidence_scroll"):
         if not isinstance(outcome, ApplicationQueryResult) or not outcome.answer.evidence:
             if error := st.session_state.get("last_resolution_error"):
-                st.error(_text(locale, _error_message_key(error["code"])))
+                st.error(error.get("user_message", _text(locale, _error_message_key(error["code"]))))
                 if error["candidates"]:
                     if error.get("evidence_rows"):
                         labels = {"Name": "名称", "Source": "证据来源", "Set": "属性 / 工程量集", "Field": "字段", "Value": "数值", "Unit": "单位"} if locale == "zh" else {}

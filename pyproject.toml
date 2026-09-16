@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bim-evidence-qa"
-version = "0.1.0"
+version = "0.2.0"
 description = "Data-independent core for BIM evidence question answering"
 requires-python = ">=3.11"
 dependencies = [

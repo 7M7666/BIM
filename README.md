@@ -4,7 +4,7 @@ BIM Evidence QA 是一个用于课堂演示的 Streamlit 应用。它回答上�
 
 在线演示：[bimworkingdemo.streamlit.app](https://bimworkingdemo.streamlit.app/)
 
-当前界面版本：`v0.1.0`
+当前界面版本：`v0.2.0`
 
 ## 项目能力
 
@@ -16,6 +16,21 @@ BIM Evidence QA 是一个用于课堂演示的 Streamlit 应用。它回答上�
 - “有几层楼”“有多少楼层”“how many storeys”等问题只按 `IfcBuildingStorey` 计数；若模型没有该实体，应用明确说明无法从空间层级确定楼层数，不会按 `Reference Level` 数量推断。
 - 成功答案提供确定性 IFC 证据。可选 LLM Planner 只能提出计划，计划仍在本地校验；LLM 不直接生成 BIM 事实。
 - 图纸检索从结构化 IFC 证据生成检索词。可靠对象级匹配可作为图纸证据；count、list、filter、aggregate 和 overview 回答均明确为 IFC 模型统计，不会由单页 PDF 冒充直接证明。
+- 支持一轮受控连续追问：在成功定位单个构件后，可继续问“这个门有多宽？”；在成功统计一个构件类别后，可继续问“只看第二层呢？”。系统只延续已验证的单对象或构件类别，遇到多个候选时会要求补充编号或名称。
+- 拒答信息会说明具体原因和下一步：模型支持范围、IFC 属性缺失、找不到构件、候选不唯一、上下文不足或数据覆盖不完整均有不同提示，不用统一的“不支持”掩盖原因。
+
+## v0.2.0 部署核验
+
+页面标题旁应显示 `v0.2.0`。若仍显示 `v0.1.0`，则当前网页尚未刷新到此版本。
+
+上传 RAC IFC 后，可按以下顺序核验连续追问是否已部署：
+
+```text
+你有没有找到编号 422466 的门？
+这个门有多宽？
+```
+
+第二句应返回 `800.0 mm` 的 IFC 宽度证据。若仍显示“当前版本暂不支持这种查询”，则打开的是旧部署，而不是 v0.2.0。
 
 ## 问答流程
 
@@ -64,6 +79,8 @@ $env:BIM_QA_LLM_MODEL = "..."
 | 精确查找 | `查找 Door 422466` | `Find beam 1046268` |
 | 属性 | `梁 1046268 的长度是多少？` | `What is the width of footing 1178029?` |
 | 范围计数 | `Level 2 有多少门？` | `How many beams have Reference Level Level 2?` |
+| 连续属性追问 | `查找 Door 422466` → `这个门有多宽？` | `Find Door 422466` → `What is its width?` |
+| 连续范围追问 | `有多少扇门？` → `只看第二层呢？` | `How many doors are there?` → `Only Level 2?` |
 | 楼层缺失状态 | `有几层楼？` | `How many storeys are there?` |
 
 系统会拒绝当前边界以外的问题，例如几何推理、任意多跳关系、施工时序、成本与图纸视觉理解。

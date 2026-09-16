@@ -18,6 +18,9 @@ PROPERTY_ALIASES = {
 OPERATION_ALIASES = {
     "平均值": "average", "平均": "average", "最大的": "max", "最大": "max",
     "最小的": "min", "最小": "min", "显示所有": "list", "列出": "list",
+    "总面积": "sum area", "总长度": "sum length", "总体积": "sum volume",
+    "面积总和": "sum area", "长度总和": "sum length", "体积总和": "sum volume",
+    "合计面积": "sum area", "合计长度": "sum length", "合计体积": "sum volume",
     "哪些": "list", "什么": "list", "多少": "count", "几层": "count storey", "多少层": "count storey", "数量": "count", "有几": "count",
     "几个": "count", "几扇": "count", "几面": "count", "几根": "count", "几块": "count",
     "几层楼": "count storey", "多少层楼": "count storey",
@@ -39,6 +42,7 @@ ENGLISH_INTENT_ALIASES = {
     "longest": "max length", "shortest": "min length", "widest": "max width",
     "narrowest": "min width", "tallest": "max height", "highest": "max height",
     "lowest": "min height", "wide": "width", "long": "length", "high": "height",
+    "total": "sum", "sum": "sum",
 }
 OVERVIEW_ALIASES = {
     "有什么": "overview", "包含": "overview",

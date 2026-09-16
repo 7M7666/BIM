@@ -55,6 +55,10 @@ _COUNT_FOLLOW_UP_PATTERN = re.compile(
     r"只看|只统计|只算|仅看|only\b|just\b|数一下|统计一下",
     re.IGNORECASE,
 )
+_LOCATION_FOLLOW_UP_PATTERN = re.compile(
+    r"\b(?:where|which\s+level|what\s+level)\b|在哪(?:一)?层|位于哪层|属于哪层",
+    re.IGNORECASE,
+)
 
 
 def resolve_follow_up_question(question: str, context: ConversationContext | None) -> str:
@@ -74,6 +78,14 @@ def resolve_follow_up_question(question: str, context: ConversationContext | Non
                 "This property follow-up needs one object identified in the previous answer.",
             )
         return f"What is the {property_name} of {context.object_name}?"
+
+    if has_pronoun and _LOCATION_FOLLOW_UP_PATTERN.search(question):
+        if context is None or context.object_name is None:
+            raise ResolutionError(
+                "needs_context",
+                "This location follow-up needs one object identified in the previous answer.",
+            )
+        return f"Which level contains {context.object_name}?"
 
     level = _follow_up_level(question)
     if level is not None and _is_count_follow_up(question, context):

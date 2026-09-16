@@ -180,7 +180,7 @@ def test_query_catalog_prompt_changes_with_dataset_content(
     ]
     assert "Room 202" in synthetic_payload["entity_names"]
     assert "Room 202" not in ifc_payload["entity_names"]
-    assert ifc_payload["aggregate_functions"] == ["average", "max", "min"]
+    assert ifc_payload["aggregate_functions"] == ["average", "max", "min", "sum"]
 
 
 def test_llm_settings_require_environment_configuration():
@@ -228,6 +228,17 @@ def test_llm_planner_resolves_an_object_ref_for_find(catalog):
     assert plan.filters[0].value == "door-d101"
 
 
+def test_llm_planner_repairs_an_unfiltered_list_as_find(catalog):
+    provider = FakeProvider(json.dumps({
+        "operation": "filter", "kind": "door", "filters": [],
+    }))
+
+    plan = LLMQueryPlanner(provider).plan("List all doors.", catalog)
+
+    assert plan.operation is QueryOperation.FIND
+    assert plan.kind == "door"
+
+
 def test_llm_planner_resolves_a_numbered_object_for_location():
     dataset = BuildingDataset((
         BuildingEntity("storey-2", "storey", name="Level 2"),
@@ -272,3 +283,29 @@ def test_llm_planner_resolves_a_chinese_numbered_property_question():
 
     assert outcome.plan.requested_property == "width"
     assert outcome.answer.value == 0.9
+
+
+def test_llm_planner_prefers_the_unique_quantity_field_for_semantic_sum():
+    dataset = BuildingDataset((
+        BuildingEntity(
+            "door-1",
+            "door",
+            attributes={"Qto_DoorBaseQuantities.Area": 2.0},
+        ),
+        BuildingEntity(
+            "door-2",
+            "door",
+            attributes={"Qto_DoorBaseQuantities.Area": 3.0},
+        ),
+    ))
+    planner = LLMQueryPlanner(FakeProvider(json.dumps({
+        "operation": "aggregate",
+        "kind": "door",
+        "aggregate_function": "sum",
+        "aggregate_field": "area",
+    })))
+
+    outcome = run_question(dataset, "所有门的总面积是多少？", planner)
+
+    assert outcome.plan.aggregate_field == "Qto_DoorBaseQuantities.Area"
+    assert outcome.answer.value == 5.0

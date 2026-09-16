@@ -63,12 +63,13 @@ class LLMQueryPlanner:
             self._system_prompt(),
             self._user_prompt(question, catalog),
         )
-        plan = self._parse_response(response, catalog)
+        plan = self._parse_response(response, catalog, normalized)
         requested = requested_property(subject, (p for p in catalog.attributes if "." in p))
         aggregate_intent = DevelopmentNaturalLanguagePlanner._contains_any(
             subject.casefold(), (*DevelopmentNaturalLanguagePlanner._MAX_MARKERS,
                                  *DevelopmentNaturalLanguagePlanner._MIN_MARKERS,
-                                 *DevelopmentNaturalLanguagePlanner._AVERAGE_MARKERS)
+                                 *DevelopmentNaturalLanguagePlanner._AVERAGE_MARKERS,
+                                 *DevelopmentNaturalLanguagePlanner._SUM_MARKERS)
         )
         if plan.requested_property is not None:
             if requested != plan.requested_property:
@@ -117,6 +118,7 @@ class LLMQueryPlanner:
             "For questions asking which level contains an entity or an entity belongs to, use operation location "
             "with the canonical entity kind. For one named or numbered entity, also use object_ref; otherwise use no filters. The engine reports either spatial "
             "IfcBuildingStorey containment or an explicit Reference Level property. "
+            "For a request to list all entities of one kind, use operation find with that kind and no filters; never use filter without a condition. "
             "For a single object property use operation find, canonical kind, object_ref "
             "(exact name, GlobalId or exported element ID), and requested_property. "
             "requested_property must be length, width, height, area, volume, properties, "
@@ -159,10 +161,17 @@ class LLMQueryPlanner:
                     "name": sorted(catalog.entity_names)[0],
                 }
             )
+        if catalog.kinds:
+            examples.append(
+                {
+                    "operation": "find",
+                    "kind": sorted(catalog.kinds)[0],
+                }
+            )
         return examples
 
     def _parse_response(
-        self, response: str, catalog: QueryCatalog
+        self, response: str, catalog: QueryCatalog, normalized_question: str
     ) -> QueryPlan:
         try:
             payload = json.loads(response)
@@ -210,6 +219,9 @@ class LLMQueryPlanner:
         aggregate_field = self._optional_string(
             payload.get("aggregate_field"), "aggregate_field"
         )
+        aggregate_field = self._resolve_aggregate_field(
+            aggregate_field, kind, catalog,
+        )
 
         property_request = self._optional_string(payload.get("requested_property"), "requested_property")
         if property_request is not None:
@@ -236,6 +248,22 @@ class LLMQueryPlanner:
                 kind=entity.kind,
                 filters=(FilterCondition("entity_id", FilterOperator.EQ, entity.entity_id), *filters),
             )
+
+        if operation is QueryOperation.LOCATION and name is not None:
+            entity = self._resolve_object_reference(name, catalog, kind)
+            return QueryPlan(
+                operation=operation,
+                kind=entity.kind,
+                filters=(FilterCondition("entity_id", FilterOperator.EQ, entity.entity_id), *filters),
+            )
+
+        if (
+            operation is QueryOperation.FILTER
+            and kind is not None
+            and not filters
+            and re.search(r"\blist\b", normalized_question, re.IGNORECASE)
+        ):
+            return QueryPlan(operation=QueryOperation.FIND, kind=kind)
 
         self._validate_operation_fields(
             operation,
@@ -273,6 +301,34 @@ class LLMQueryPlanner:
             return resolve_object(
                 numeric_id.group(1), catalog.entities_by_id.values(), kind,
             )
+
+    @staticmethod
+    def _resolve_aggregate_field(
+        field: str | None,
+        kind: str | None,
+        catalog: QueryCatalog,
+    ) -> str | None:
+        if field is None or kind is None or catalog.supports_attribute(kind, field):
+            return field
+        semantic_names = SEMANTIC_FIELDS.get(field)
+        if semantic_names is None:
+            return field
+        candidates = [
+            attribute for attribute in catalog.attributes_by_kind.get(kind, ())
+            if attribute.rsplit(".", 1)[-1] in semantic_names
+        ]
+        quantity_candidates = [
+            attribute for attribute in candidates if attribute.startswith("Qto_")
+        ]
+        if len(quantity_candidates) == 1:
+            return quantity_candidates[0]
+        if len(candidates) == 1:
+            return candidates[0]
+        if candidates:
+            raise InvalidPlannerOutputError(
+                f"Aggregate field '{field}' is ambiguous for entity kind '{kind}'."
+            )
+        return field
 
     @staticmethod
     def _operation(value: object, catalog: QueryCatalog) -> QueryOperation:

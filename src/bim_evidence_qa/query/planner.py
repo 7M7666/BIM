@@ -84,6 +84,7 @@ class DevelopmentNaturalLanguagePlanner:
     _MAX_MARKERS = ("largest", "biggest", "maximum", "max")
     _MIN_MARKERS = ("smallest", "minimum", "min")
     _AVERAGE_MARKERS = ("average", "mean")
+    _SUM_MARKERS = ("sum", "total")
     _FIND_MARKERS = ("find", "show", "locate", "list", "which", "what")
     _COMPARISON_OPERATORS = {
         ">=": FilterOperator.GTE, "<=": FilterOperator.LTE,
@@ -118,7 +119,7 @@ class DevelopmentNaturalLanguagePlanner:
 
         tokens = re.findall(r"[a-z0-9_-]+", normalized)
         property_request = requested_property(question, (p for p in catalog.attributes if "." in p))
-        aggregate_markers = (*self._MAX_MARKERS, *self._MIN_MARKERS, *self._AVERAGE_MARKERS)
+        aggregate_markers = (*self._MAX_MARKERS, *self._MIN_MARKERS, *self._AVERAGE_MARKERS, *self._SUM_MARKERS)
         if (property_request and not self._contains_any(normalized, aggregate_markers)
                 and not self._has_comparison(normalized)):
             return self._property_plan(question, property_request, catalog)
@@ -131,6 +132,8 @@ class DevelopmentNaturalLanguagePlanner:
 
         if self._contains_any(normalized, self._AVERAGE_MARKERS):
             return self._aggregate_plan(AggregateFunction.AVERAGE, kind, attribute, catalog)
+        if self._contains_any(normalized, self._SUM_MARKERS):
+            return self._aggregate_plan(AggregateFunction.SUM, kind, attribute, catalog)
         if self._contains_any(normalized, self._MAX_MARKERS):
             return self._aggregate_plan(AggregateFunction.MAX, kind, attribute, catalog)
         if self._contains_any(normalized, self._MIN_MARKERS):

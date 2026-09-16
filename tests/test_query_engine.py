@@ -131,6 +131,21 @@ def test_average_space_area(engine, synthetic_dataset):
     assert len(result.entities) == 5
 
 
+def test_total_space_area(engine, synthetic_dataset):
+    result = engine.execute(
+        QueryPlan(
+            operation=QueryOperation.AGGREGATE,
+            kind="space",
+            aggregate_function=AggregateFunction.SUM,
+            aggregate_field="area",
+        ),
+        synthetic_dataset,
+    )
+
+    assert result.value == 105.0
+    assert len(result.entities) == 5
+
+
 def test_unknown_field_has_clear_error(engine, synthetic_dataset):
     plan = QueryPlan(
         operation=QueryOperation.FILTER,

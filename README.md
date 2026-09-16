@@ -4,13 +4,13 @@ BIM Evidence QA 是一个用于课堂演示的 Streamlit 应用。它回答上�
 
 在线演示：[bimworkingdemo.streamlit.app](https://bimworkingdemo.streamlit.app/)
 
-当前界面版本：`v0.2.1`
+当前界面版本：`v0.3.0`
 
 ## 项目能力
 
 - 解析 IFC4 为本地规范化数据集，保留实体、属性集、工程量、单位、GlobalId 和来源信息。
 - 支持中文、英文和中英混合的受控提问，覆盖楼层、房间、门、窗、墙、梁、柱、楼板、基础和桩。
-- 支持 count、list/find、精确对象解析、IfcBuildingStorey 空间包含、基于属性的 `Reference Level`、单对象 Property/Quantity、已支持的 aggregate、结构化拒答和项目概览 `overview`。
+- 支持 count、list/find、精确对象解析、IfcBuildingStorey 空间包含、基于属性的 `Reference Level`、单对象 Property/Quantity、max/min/average/sum 聚合、结构化拒答和项目概览 `overview`。
 - `overview` 由“当前建筑/模型/项目”或隐含当前模型的构件概览语义识别，不按完整句子匹配。`这个建筑有什么？`、`这个模型包含什么？`、`有哪些构件？`、`give me an overview of this model` 都会生成同一个 canonical `overview` plan。
 - 概览统计直接读取当前解析 IFC 数据，只返回数量大于 0 的已支持类别及真实数量。没有 `IfcBuildingStorey` 的模型不会被虚构楼层数量。
 - “有几层楼”“有多少楼层”“how many storeys”等问题只按 `IfcBuildingStorey` 计数；若模型没有该实体，应用明确说明无法从空间层级确定楼层数，不会按 `Reference Level` 数量推断。
@@ -19,19 +19,20 @@ BIM Evidence QA 是一个用于课堂演示的 Streamlit 应用。它回答上�
 - 支持一轮受控连续追问：在成功定位单个构件后，可继续问“这个门有多宽？”；在成功统计一个构件类别后，可继续问“只看第二层呢？”。系统只延续已验证的单对象或构件类别，遇到多个候选时会要求补充编号或名称。
 - 拒答信息会说明具体原因和下一步：模型支持范围、IFC 属性缺失、找不到构件、候选不唯一、上下文不足或数据覆盖不完整均有不同提示，不用统一的“不支持”掩盖原因。
 
-## v0.2.1 部署核验
+## v0.3.0 部署核验
 
-页面标题旁应显示 `v0.2.1`。若仍显示 `v0.2.0` 或更早版本，则当前网页尚未刷新到此版本。
+页面标题旁应显示 `v0.3.0`。若仍显示 `v0.2.1` 或更早版本，则当前网页尚未刷新到此版本。
 
-上传 RAC IFC 后，可按以下顺序核验连续追问是否已部署：
+上传 RAC IFC 后，可用不同类型的自然问法核验：
 
 ```text
 你有没有找到编号 422466 的门？
-编号422466的门在哪一层？
-编号422466的门多宽？
+那它在哪一层？
+帮我列出模型里的窗户
+第2层的门面积总和是多少？
 ```
 
-应依次找到该门、返回 `Level 1`，并返回 `800.0 mm` 的 IFC 宽度证据。若仍显示“当前原型暂不支持这种查询”或“未找到编号422466”，则打开的是旧部署，而不是 v0.2.1。
+应依次找到该门、返回 `Level 1`、列出 17 扇窗，并返回二层门面积的带 IFC 字段来源的总值。若其中任一问法仍被旧版统一拒答，或页面版本低于 `v0.3.0`，则打开的不是当前部署。
 
 ## 问答流程
 
@@ -82,6 +83,7 @@ $env:BIM_QA_LLM_MODEL = "..."
 | 范围计数 | `Level 2 有多少门？` | `How many beams have Reference Level Level 2?` |
 | 连续属性追问 | `查找 Door 422466` → `这个门有多宽？` | `Find Door 422466` → `What is its width?` |
 | 连续范围追问 | `有多少扇门？` → `只看第二层呢？` | `How many doors are there?` → `Only Level 2?` |
+| 总量统计 | `第2层的门面积总和是多少？` | `What is the total area of doors on Level 2?` |
 | 楼层缺失状态 | `有几层楼？` | `How many storeys are there?` |
 
 系统会拒绝当前边界以外的问题，例如几何推理、任意多跳关系、施工时序、成本与图纸视觉理解。

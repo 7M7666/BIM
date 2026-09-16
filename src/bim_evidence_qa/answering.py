@@ -111,6 +111,11 @@ class AnswerBuilder:
                     "ok",
                     f"The average {kind} {plan.aggregate_field} is {result.value}.",
                 )
+            if plan.aggregate_function is AggregateFunction.SUM:
+                return (
+                    "ok",
+                    f"The total {kind} {plan.aggregate_field} is {result.value}.",
+                )
 
             function = (
                 "maximum"
@@ -179,8 +184,17 @@ class AnswerBuilder:
                 return "ok", f"已找到 {entity.name or entity.global_id or '对应对象'}。"
             return "ok", f"共找到 {len(result.entities)} 个符合条件的对象。"
         if plan.operation is QueryOperation.AGGREGATE:
-            function = {AggregateFunction.AVERAGE: "平均值", AggregateFunction.MAX: "最大值", AggregateFunction.MIN: "最小值"}[plan.aggregate_function]
-            return "ok", f"{plan.aggregate_field} 的{function}为 {result.value}。"
+            function = {
+                AggregateFunction.AVERAGE: "平均值",
+                AggregateFunction.MAX: "最大值",
+                AggregateFunction.MIN: "最小值",
+                AggregateFunction.SUM: "总和",
+            }[plan.aggregate_function]
+            field = {
+                "area": "面积", "length": "长度", "width": "宽度",
+                "height": "高度", "volume": "体积",
+            }.get(plan.aggregate_field, plan.aggregate_field)
+            return "ok", f"{field} 的{function}为 {result.value}。"
         raise ValueError(f"Unsupported query operation: {plan.operation}")
 
     @staticmethod

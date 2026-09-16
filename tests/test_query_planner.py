@@ -106,6 +106,16 @@ def test_average_room_area_question_creates_average_plan(planner, catalog):
     assert plan.aggregate_field == "area"
 
 
+@pytest.mark.parametrize("question", ("What is the total room area?", "所有房间的总面积是多少？"))
+def test_total_area_question_creates_sum_plan(planner, catalog, question):
+    plan = planner.plan(question, catalog)
+
+    assert plan.operation is QueryOperation.AGGREGATE
+    assert plan.kind == "space"
+    assert plan.aggregate_function is AggregateFunction.SUM
+    assert plan.aggregate_field == "area"
+
+
 def test_find_room_question_creates_find_plan(planner, catalog):
     plan = planner.plan("Find Room 101", catalog)
 

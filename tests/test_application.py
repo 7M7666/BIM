@@ -1,6 +1,10 @@
 import pytest
 
-from bim_evidence_qa.application import ConversationContext, run_question
+from bim_evidence_qa.application import (
+    ConversationContext,
+    resolve_follow_up_question,
+    run_question,
+)
 from bim_evidence_qa.domain import (
     BuildingDataset,
     BuildingEntity,
@@ -104,6 +108,21 @@ def test_storey_follow_up_narrows_the_previous_count(synthetic_dataset):
     assert follow_up.plan.operation.value == "count"
     assert follow_up.plan.kind == "door"
     assert follow_up.result.value == 2
+
+
+def test_location_follow_up_resolves_the_previous_single_object(synthetic_dataset):
+    first = run_question(
+        synthetic_dataset,
+        "Find Door D101",
+        DevelopmentNaturalLanguagePlanner(),
+    )
+
+    question = resolve_follow_up_question(
+        "那它在哪一层？",
+        ConversationContext.from_outcome(first),
+    )
+
+    assert question == "Which level contains Door D101?"
 
 
 def test_follow_up_does_not_pick_one_object_from_a_previous_collection(synthetic_dataset):

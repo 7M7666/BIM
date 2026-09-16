@@ -92,6 +92,7 @@ class AggregateFunction(str, Enum):
     MIN = "min"
     MAX = "max"
     AVERAGE = "average"
+    SUM = "sum"
 
 
 @dataclass(frozen=True, slots=True)

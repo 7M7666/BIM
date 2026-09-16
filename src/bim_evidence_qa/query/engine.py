@@ -254,6 +254,13 @@ class QueryEngine:
                 value=fmean(values),
             )
 
+        if plan.aggregate_function is AggregateFunction.SUM:
+            return QueryResult(
+                operation=plan.operation,
+                entities=entities,
+                value=sum(values),
+            )
+
         aggregate_value = (
             min(values)
             if plan.aggregate_function is AggregateFunction.MIN
